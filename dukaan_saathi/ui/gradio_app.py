@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pathlib import Path
 
 import pandas as pd
 import gradio as gr
@@ -50,6 +51,8 @@ REORDER_COLUMNS = [
     "reason",
 ]
 
+SAMPLE_RECEIPT_DIR = Path("samples/receipt_text")
+
 
 SAMPLE_RECEIPT = """Mahalakshmi Marketing
 Bingo 4 X 870 = 3480
@@ -73,6 +76,22 @@ CUSTOM_CSS = """
 footer { display: none !important; }
 """
 
+
+def list_sample_receipts() -> list[str]:
+    if not SAMPLE_RECEIPT_DIR.exists():
+        return []
+    return sorted(path.name for path in SAMPLE_RECEIPT_DIR.glob("*.txt"))
+
+
+def load_sample_receipt(filename: str) -> str:
+    if not filename:
+        return SAMPLE_RECEIPT
+
+    path = SAMPLE_RECEIPT_DIR / filename
+    if not path.exists():
+        return SAMPLE_RECEIPT
+
+    return path.read_text()
 
 def bi(en: str, te: str) -> str:
     return f"{en} · {te}"
@@ -211,6 +230,15 @@ def build_demo() -> gr.Blocks:
             )
 
             with gr.Row():
+                sample_receipt_dropdown = gr.Dropdown(
+                    choices=list_sample_receipts(),
+                    label="Load sample receipt",
+                    value=None,
+                    scale=3,
+                )
+                load_sample_btn = gr.Button("Load selected sample", scale=1)
+
+            with gr.Row():
                 receipt_image = gr.Image(
                     label=bi("Receipt image", "బిల్ ఫోటో"),
                     type="pil",
@@ -221,6 +249,12 @@ def build_demo() -> gr.Blocks:
                     value=SAMPLE_RECEIPT,
                     lines=10,
                 )
+
+            load_sample_btn.click(
+                fn=load_sample_receipt,
+                inputs=sample_receipt_dropdown,
+                outputs=receipt_text,
+            )
 
             parse_receipt_btn = gr.Button(bi("Parse receipt", "బిల్ చదవు"), variant="primary")
             receipt_table = gr.Dataframe(

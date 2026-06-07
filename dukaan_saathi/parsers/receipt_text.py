@@ -22,6 +22,30 @@ SKIP_WORDS = {
     "address",
 }
 
+def _looks_like_item_row(line: str) -> bool:
+    lower = line.lower()
+
+    # Pipe-separated invoice row:
+    # Product | 5/0 | MRP 10.00 | RATE 8.625 | GST 5% | NET 3105.000
+    if "|" in line and any(token in lower for token in ["rate", "net", "mrp"]):
+        return True
+
+    # Handwritten row:
+    # Bingo(C) 4 X 870 = 3480
+    if re.search(r"\d+(?:\.\d+)?\s*[xX*]\s*\d+(?:\.\d+)?", line):
+        return True
+
+    return False
+
+
+def _should_skip_line(line: str) -> bool:
+    lower = line.lower()
+
+    if _looks_like_item_row(line):
+        return False
+
+    return any(word in lower for word in SKIP_WORDS)
+
 
 def _to_float(value: str | None) -> float | None:
     if value is None:
@@ -266,9 +290,7 @@ def parse_receipt_text(raw_text: str) -> tuple[list[dict[str, Any]], list[str]]:
     rows: list[dict[str, Any]] = []
 
     for line in lines:
-        lower = line.lower()
-
-        if any(word in lower for word in SKIP_WORDS):
+        if _should_skip_line(line):
             continue
 
         parsed = (

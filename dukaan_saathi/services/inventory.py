@@ -110,10 +110,22 @@ def approve_receipt_rows(receipt_rows: pd.DataFrame | list[dict[str, Any]] | Non
             trace.append(f"Skipped {product_name}: quantity must be positive")
             continue
 
+        unit_cost = 0.0
+
         try:
-            unit_cost = float(row.get("unit_price") or 0)
+            total_price = float(row.get("total_price") or 0)
         except (TypeError, ValueError):
-            unit_cost = 0.0
+            total_price = 0.0
+
+        try:
+            raw_unit_price = float(row.get("unit_price") or 0)
+        except (TypeError, ValueError):
+            raw_unit_price = 0.0
+
+        if total_price > 0 and quantity > 0:
+            unit_cost = total_price / quantity
+        else:
+            unit_cost = raw_unit_price
 
         result = apply_stock_delta(
             product_id=product_id,
@@ -127,7 +139,8 @@ def approve_receipt_rows(receipt_rows: pd.DataFrame | list[dict[str, Any]] | Non
         approved += 1
         trace.append(
             f"Updated {result['product_name']}: "
-            f"{result['previous_stock']} → {result['new_stock']}"
+            f"{result['previous_stock']} → {result['new_stock']} "
+            f"(effective unit cost: {unit_cost:.2f})"
         )
 
     return f"Approved {approved} rows. Skipped {skipped}.", trace

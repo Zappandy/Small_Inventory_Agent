@@ -14,7 +14,7 @@ def draft_reorder() -> tuple[list[dict[str, Any]], list[str]]:
         current = int(product["current_stock"])
         threshold = int(product["reorder_threshold"])
         target = int(product["target_stock"])
-        suggested_qty = max(target - current, threshold * 2)
+        suggested_qty = max(target - current, 0)
 
         unit_cost = float(product.get("last_unit_cost") or 0)
         estimated_total = round(suggested_qty * unit_cost, 2)
@@ -29,13 +29,13 @@ def draft_reorder() -> tuple[list[dict[str, Any]], list[str]]:
                 "suggested_order_qty": suggested_qty,
                 "unit_cost": unit_cost,
                 "estimated_total": estimated_total,
-                "reason": f"Current stock {current} is at/below threshold {threshold}",
+                "reason": f"Current stock {current} is at/below threshold {threshold}; refill to target {target}",
             }
         )
 
         trace.append(
             f"{product['product_name']}: current={current}, "
-            f"threshold={threshold}, suggest={suggested_qty}"
+            f"threshold={threshold}, target={target}, suggest={suggested_qty}"
         )
 
     if not rows:
