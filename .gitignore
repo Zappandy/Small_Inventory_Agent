@@ -2,6 +2,13 @@
 __pycache__/
 *.py[codz]
 *$py.class
+*.pyc
+.DS_Store
+
+# data stuff
+data/*.db
+data/*.sqlite
+data/*.sqlite3
 
 # C extensions
 *.so
