@@ -1,0 +1,12 @@
+Sri Venkateshwara Marketing
+Document Type: printed tax invoice
+Invoice No: 6
+Date: 28/05/2026
+
+PARLE-G 60GM RS.72P | 5/0 | MRP 10.00 | RATE 8.625 | GST 5% | NET 3105.000
+HAPPY HAPPY 27.5G(24P)*13 | 10/0 | MRP 5.00 | RATE 4.464 | GST 5% | NET 5715.710
+
+Gross Sales: 8759.032
+CGST: 210.017
+SGST: 210.017
+Net Amount: 8821.00

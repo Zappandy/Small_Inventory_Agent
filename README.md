@@ -19,37 +19,79 @@ tags:
   - lora-finetune
 ---
 
-# Dukaan Inventory · దుకాణం ఇన్వెంటరీ
+# Dukaan Saathi · Telugu Inventory Copilot for Kirana Stores
 
-An agentic inventory management system for a small Indian convenience store in Hyderabad —
-built for owners who speak Telugu but work with English product names and supplier receipts.
+Dukaan Saathi is a small-model inventory assistant for a tiny convenience store in Hyderabad.
+
+The store owner speaks Telugu during the day, sells products with English names, and receives messy supplier receipts on paper. The app helps with the daily inventory loop:
+
+1. Understand Telugu/code-mixed stock commands
+2. Extract line items from supplier receipt photos
+3. Check inventory thresholds
+4. Draft reorder purchase orders by supplier
+5. Ask the owner to approve every update before anything changes
+
+This is not a full ERP, POS system, or autonomous purchasing bot. It is a local-first assistant for one real workflow: keeping shelves stocked without forcing the owner to type everything into a spreadsheet.
+
+The LLM does not store inventory or make final business decisions. It only interprets messy inputs and proposes structured actions. Inventory math, thresholds, purchase-order grouping, and database updates are handled by deterministic Python tools. Every stock update and reorder draft requires human approval.
+
 
 ## What it does
 
-- **Telugu voice input** — speak a command ("Bingo అయిపోయింది") and the system understands
-- **Receipt photo parsing** — photograph a handwritten or printed supplier bill; the agent extracts all line items
-- **Automated reorder suggestions** — when stock falls below threshold, a grouped purchase order is drafted by supplier and shown for approval (human-in-the-loop)
-- **Bilingual UI** — alerts and responses in Telugu; product names and data always in English
-- **Agent trace panel** — see every step the LangGraph orchestrator takes in real time
-- **Weekly reports & shrinkage** — cost vs. estimated revenue, what was ordered vs. what's on the shelf
+- **Telugu/code-mixed stock commands**  
+  Example: `Bingo అయిపోయింది` → detects that Bingo is out of stock and proposes an inventory update.
+
+- **Receipt photo parsing**  
+  Upload a supplier bill and the app extracts product names, quantities, costs, and supplier names into structured JSON.
+
+- **Inventory ledger**  
+  Every approved stock change is written to SQLite with timestamp, source, and reason.
+
+- **Reorder suggestions**  
+  When stock falls below threshold, the agent drafts a purchase order grouped by supplier.
+
+- **Human approval**  
+  The owner must approve receipt imports, stock updates, and purchase orders before they are applied.
+
+- **Agent trace panel**  
+  The UI shows each step: intent detection, product matching, threshold check, supplier grouping, and approval status.
 
 ## Architecture
 
 ```
-Telugu voice → Whisper small (ASR) → IndicTrans2 (te→en)
-Receipt photo → Qwen2.5-VL-7B (OCR)
-                          ↓
-              LangGraph Orchestrator (Llama-3.2-3B)
-         ┌────────────────┼──────────────────┐
-  Receipt Parser    Inventory Mgr      Reporting Agent
-  (Mistral-7B LoRA) (Mistral-7B)       (Mistral-7B)
-         └────────────────┴──► Reorder Agent → HITL PO
-                          ↓
-              IndicTrans2 (en→te) → Gradio UI
-```
+Telugu / code-mixed command
+        │
+Receipt photo
+        │
+        ▼
+Gradio UI
+        │
+        ▼
+Small-model router
+(intent, receipt extraction, reorder explanation)
+        │
+        ▼
+Deterministic inventory tools
+- match_product()
+- update_stock()
+- parse_receipt_json()
+- check_thresholds()
+- draft_purchase_order()
+        │
+        ▼
+Human approval screen
+        │
+        ▼
+SQLite inventory ledger
+        │
+        ▼
+Telugu + English response
 
+```
 All models run locally via **llama.cpp** — no cloud APIs.
 
+## TODO: REVIEW IF WHATS UNDER HERE IS STILL RELEVANT
+---
 ## Models used (all < 32B)
 
 | Model | Size | Role |
