@@ -63,7 +63,14 @@ def _to_float(value: str | None) -> float | None:
     try:
         return float(cleaned)
     except ValueError:
-        return None
+        pass
+
+    # Model/OCR output often returns rates like "X2450" or "X8702".
+    number_match = re.search(r"\d+(?:\.\d+)?", cleaned)
+    if number_match:
+        return float(number_match.group(0))
+
+    return None
 
 
 def _clean_product_name(value: str) -> str:
@@ -189,15 +196,65 @@ def _validate_math(quantity: int, unit_price: float | None, total_price: float |
 
     return 0.9, ""
 
+def _looks_like_table_separator(parts: list[str]) -> bool:
+    return all(not part or set(part) <= {"-"} for part in parts)
+
+
+def _looks_like_header_row(parts: list[str]) -> bool:
+    joined = " ".join(parts).lower()
+    return (
+        "particular" in joined
+        and "qty" in joined
+        and ("rate" in joined or "amount" in joined)
+    )
+
+
+def _looks_like_serial(value: str) -> bool:
+    cleaned = value.strip()
+    return bool(re.match(r"^\d+\s*/?\s*\d*$", cleaned))
 
 def _parse_pipe_row(line: str, document_type: str, supplier: str) -> dict[str, Any] | None:
     if "|" not in line:
         return None
 
     parts = [part.strip() for part in line.split("|")]
+
     if len(parts) < 2:
         return None
 
+    if _looks_like_table_separator(parts) or _looks_like_header_row(parts):
+        return None
+
+    # Model-produced table style:
+    # serial | product | quantity | rate | amount
+    # Example:
+    # 5/ | Port | 1 | X2450 | 2450
+    # 10/ | Rs.g/c | 4 | X8702 | 3480
+    if len(parts) >= 5 and _looks_like_serial(parts[0]) and parts[1]:
+        product_raw = parts[1]
+        quantity, quantity_raw = _parse_quantity(parts[2])
+        unit_price = _to_float(parts[3])
+        total_price = _to_float(parts[4])
+
+        if quantity is None:
+            return None
+
+        confidence, warning = _validate_math(quantity, unit_price, total_price)
+
+        return _build_row(
+            document_type=document_type,
+            supplier=supplier,
+            product_raw=product_raw,
+            quantity_raw=quantity_raw,
+            quantity=quantity,
+            unit_price=unit_price,
+            total_price=total_price,
+            confidence=confidence,
+            warning=warning,
+        )
+
+    # Existing normalized style:
+    # product | quantity | rate | amount
     product_raw = parts[0]
     quantity, quantity_raw = _parse_quantity(parts[1])
     if quantity is None:
@@ -214,10 +271,13 @@ def _parse_pipe_row(line: str, document_type: str, supplier: str) -> dict[str, A
         elif "net" in lower or "amount" in lower:
             total_price = _to_float(part.split()[-1])
         elif unit_price is None:
-            # fallback: first plain number after quantity
             maybe = _to_float(part.split()[-1])
             if maybe is not None:
                 unit_price = maybe
+        elif total_price is None:
+            maybe = _to_float(part.split()[-1])
+            if maybe is not None:
+                total_price = maybe
 
     confidence, warning = _validate_math(quantity, unit_price, total_price)
 
@@ -232,7 +292,6 @@ def _parse_pipe_row(line: str, document_type: str, supplier: str) -> dict[str, A
         confidence=confidence,
         warning=warning,
     )
-
 
 def _parse_multiply_row(line: str, document_type: str, supplier: str) -> dict[str, Any] | None:
     pattern = re.compile(

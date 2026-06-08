@@ -22,6 +22,33 @@ class ReceiptParserRegressionTest(unittest.TestCase):
                 path.unlink()
         init_db()
 
+
+    def test_actual_minicpm_receipt_output_populates_owner_review_rows(self) -> None:
+        raw_text = Path("smoke_tests/fixtures/minicpm_receipt_raw_text_actual.txt").read_text()
+    
+        rows, trace = parse_receipt_text(raw_text)
+    
+        self.assertEqual(len(rows), 2)
+    
+        self.assertEqual(rows[0]["supplier"], "Mahalakshmi Marketing")
+        self.assertEqual(rows[0]["product_raw"], "Port")
+        self.assertEqual(rows[0]["quantity"], 1)
+        self.assertEqual(rows[0]["unit_price"], 2450.0)
+        self.assertEqual(rows[0]["total_price"], 2450.0)
+        self.assertFalse(rows[0]["apply"])
+        self.assertIn("No catalog match", rows[0]["warning"])
+    
+        self.assertEqual(rows[1]["product_raw"], "Rs.g c")
+        self.assertEqual(rows[1]["quantity"], 4)
+        self.assertEqual(rows[1]["unit_price"], 8702.0)
+        self.assertEqual(rows[1]["total_price"], 3480.0)
+        self.assertFalse(rows[1]["apply"])
+        self.assertIn("Check math", rows[1]["warning"])
+        self.assertIn("No catalog match", rows[1]["warning"])
+    
+        self.assertIn("Detected supplier: Mahalakshmi Marketing", trace)
+        self.assertIn("Extracted 2 candidate line items", trace)
+    
     def test_current_minicpm_receipt_fixture_parse_behavior(self) -> None:
         raw_text = Path("smoke_tests/fixtures/minicpm_receipt_raw_text.txt").read_text()
 
