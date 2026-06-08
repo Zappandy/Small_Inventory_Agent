@@ -1,0 +1,1 @@
+MOLMO_HF_IDENTIFIER = "allenai/Molmo2-4B"
