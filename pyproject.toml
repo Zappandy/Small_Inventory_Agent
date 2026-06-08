@@ -9,6 +9,7 @@ dependencies = [
     "pandas>=3.0.3",
     "pillow>=12.2.0",
     "requests>=2.34.2",
+    "modal>=1.0.0",
 ]
 
 [build-system]
