@@ -6,17 +6,34 @@ import modal
 APP_NAME = "dukaan-saathi-receipt-vlm"
 MODEL_ID = "openbmb/MiniCPM-V-4.6"
 
+PROMPT_VERSION = "receipt_text_v2_pipe_rows"
+
 PROMPT = """You are reading an Indian convenience-store supplier receipt.
 
-Extract the visible receipt text faithfully.
+Return plain text only. Do not return JSON. Do not use markdown tables.
+
+Output format:
+
+Supplier: <supplier name or [unclear]>
+Document Type: <handwritten supplier bill | printed tax invoice | handwritten tally note | [unclear]>
+Bill No: <bill number or [unclear]>
+Date: <date or [unclear]>
+
+Items:
+<product name exactly as visible> | <quantity> | <rate> | <amount>
+<product name exactly as visible> | <quantity> | <rate> | <amount>
 
 Rules:
-- Preserve product names exactly as written.
-- Preserve quantities like "5/0", "4 X 870 = 3480", "10 X 9.5 = 95".
-- Preserve supplier name, date, invoice/bill number, totals, GST fields if visible.
+- Put one purchased item per line under Items.
+- Each item row must have exactly 4 pipe-separated fields: product | quantity | rate | amount.
+- Do not include serial numbers such as 5/, 10/, S.No, Sl No.
+- Do not include table headers such as PARTICULARS, QTY, RATE, AMOUNT.
+- Do not include markdown separator rows like ---|---|---.
+- Do not output subtotal, total, discount, signature, address, phone, or GST rows anywhere.
+- Preserve product names exactly as visible, but remove serial-number columns.
+- Preserve numeric values exactly as visible.
+- If a field is unclear, write [unclear].
 - Do not guess missing text.
-- If handwriting is unclear, write [unclear].
-- Return plain text only.
 """
 
 app = modal.App(APP_NAME)
@@ -53,7 +70,7 @@ def api():
     from pathlib import Path
     import tempfile
 
-    from fastapi import FastAPI, File, HTTPException, Request
+    from fastapi import FastAPI, HTTPException, Request
     import torch
     from transformers import AutoModelForImageTextToText, AutoProcessor
 
@@ -79,6 +96,7 @@ def api():
             "ok": True,
             "model": MODEL_ID,
             "mode": "image_to_raw_text",
+            "prompt_version": PROMPT_VERSION,
         }
 
 
@@ -164,8 +182,10 @@ def api():
             raw_text = output_text[0].strip()
             elapsed = round(time.perf_counter() - start, 2)
     
+
             return {
                 "model": MODEL_ID,
+                "prompt_version": PROMPT_VERSION,
                 "raw_text": raw_text,
                 "latency_seconds": elapsed,
             }
