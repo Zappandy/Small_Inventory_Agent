@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import gradio as gr
 
+from dukaan_saathi.integrations.modal_receipt import extract_receipt_with_modal
 from dukaan_saathi.parsers.receipt_text import parse_receipt_text
 from dukaan_saathi.parsers.stock_command import parse_stock_command
 from dukaan_saathi.services.inventory import approve_command_action, approve_receipt_rows
@@ -132,6 +133,11 @@ def handle_parse_receipt(image, raw_text: str):
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
     return df, "\n".join(trace)
 
+def handle_extract_receipt_image(image_path):
+    rows, trace = extract_receipt_with_modal(image_path)
+    df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
+    return df, "\n".join(trace)
+
 
 def handle_approve_receipt(receipt_df):
     message, trace = approve_receipt_rows(receipt_df)
@@ -224,8 +230,10 @@ def build_demo() -> gr.Blocks:
         with gr.Tab(bi("Receipt import", "బిల్ ఇంపోర్ట్")):
             gr.Markdown(
                 """
-                v0 uses pasted receipt text. Uploading an image is included so the UI already matches the final workflow.
-                Next step: replace pasted text with Modal-hosted OCR/VLM extraction.
+                Use either path:
+                1. Load/paste receipt text for the deterministic MVP parser.
+                2. Upload a receipt image and extract it with the model endpoint.
+                In both cases, extracted rows are editable and require owner approval before inventory changes.
                 """
             )
 
@@ -241,7 +249,7 @@ def build_demo() -> gr.Blocks:
             with gr.Row():
                 receipt_image = gr.Image(
                     label=bi("Receipt image", "బిల్ ఫోటో"),
-                    type="pil",
+                    type="filepath",
                     sources=["upload", "webcam"],
                 )
                 receipt_text = gr.Textbox(
@@ -256,7 +264,14 @@ def build_demo() -> gr.Blocks:
                 outputs=receipt_text,
             )
 
-            parse_receipt_btn = gr.Button(bi("Parse receipt", "బిల్ చదవు"), variant="primary")
+            with gr.Row():
+                parse_receipt_btn = gr.Button(
+                    bi("Parse pasted/sample text", "టెక్స్ట్ బిల్ చదవు"),
+                    variant="primary",
+                )
+                extract_image_btn = gr.Button(
+                    bi("Extract from image with model", "ఫోటో నుండి చదవు"),
+                )
             receipt_table = gr.Dataframe(
                 value=empty_receipt_df,
                 headers=RECEIPT_COLUMNS,
@@ -280,6 +295,12 @@ def build_demo() -> gr.Blocks:
                 inputs=[receipt_image, receipt_text],
                 outputs=[receipt_table, receipt_trace],
             )
+            extract_image_btn.click(
+                fn=handle_extract_receipt_image,
+                inputs=receipt_image,
+                outputs=[receipt_table, receipt_trace],
+            )
+
             approve_receipt_btn.click(
                 fn=handle_approve_receipt,
                 inputs=receipt_table,

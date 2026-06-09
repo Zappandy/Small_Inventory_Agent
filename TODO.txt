@@ -1,0 +1,4 @@
+- hf token
+- codex for unit testing
+- modal to host models???
+- Repo link on space README
