@@ -17,6 +17,7 @@ tags:
 * gradio
 * minicpm-v
 * modal
+* speech-to-text
 * sqlite
 * human-in-the-loop
 * small-business
@@ -72,11 +73,13 @@ Example noisy draft:
 
 ### Phone-friendly correction commands
 
-Instead of forcing spreadsheet-style editing on a phone, the owner can type or dictate a simple correction:
+Instead of forcing spreadsheet-style editing on a phone, the owner can type a simple correction:
 
 ```text
 first one Parle bulk, second one Bingo
 ```
+
+The owner can also record or upload correction audio. The app sends the audio to the Modal speech ASR endpoint, fills the correction command textbox with the transcript, and still waits for the owner to apply the correction and approve rows.
 
 The app remaps the rows to known inventory products:
 
@@ -127,7 +130,8 @@ This keeps the workflow useful even when the model makes mistakes.
 
 * **Gradio / Hugging Face Space** for the demo UI
 * **MiniCPM-V 4.6** for receipt image extraction
-* **Modal** for hosting the vision model endpoint
+* **Distil-Whisper small English** for correction-command speech transcription
+* **Modal** for hosting model endpoints
 * **SQLite** for local inventory state
 * **uv** for Python environment and commands
 * **Deterministic Python parsers/services** for:
@@ -150,8 +154,10 @@ dukaan_saathi/parsers/receipt_correction.py
 dukaan_saathi/services/inventory.py
 dukaan_saathi/services/reorder.py
 dukaan_saathi/integrations/modal_receipt.py
+dukaan_saathi/integrations/speech.py
 dukaan_saathi/integrations/vision.py
 modal_apps/receipt_vlm_service.py
+modal_apps/speech_asr_service.py
 smoke_tests/smoke_test.py
 smoke_tests/test_receipt_parser_regression.py
 smoke_tests/test_receipt_correction.py
@@ -190,13 +196,22 @@ Open the local Gradio URL shown in the terminal, usually:
 http://127.0.0.1:7860
 ```
 
-## Modal receipt endpoint
+## Modal endpoints
 
 Deploy the MiniCPM-V receipt endpoint:
 
 ```bash
 scripts/modal_deploy.sh modal_apps/receipt_vlm_service.py
 ```
+
+Deploy the speech ASR endpoint:
+
+```bash
+scripts/modal_deploy.sh modal_apps/speech_asr_service.py
+```
+
+Both commands deploy the Modal app and write the generated endpoint URL to `.env`.
+The receipt deployment writes `MODAL_RECEIPT_ENDPOINT`; the speech deployment writes `MODAL_SPEECH_ENDPOINT`.
 
 Load the endpoint environment:
 
@@ -211,6 +226,13 @@ BASE_URL="${MODAL_RECEIPT_ENDPOINT%/extract}"
 curl "$BASE_URL/health"
 ```
 
+Speech health check:
+
+```bash
+SPEECH_HEALTH_URL="${MODAL_SPEECH_ENDPOINT/speech-transcribe/speech-health}"
+curl "$SPEECH_HEALTH_URL"
+```
+
 Test receipt extraction directly:
 
 ```bash
@@ -218,10 +240,18 @@ curl -sS -X POST "$MODAL_RECEIPT_ENDPOINT" \
   -F "image=@samples/receipts/receipt.jpeg"
 ```
 
+Test speech transcription directly:
+
+```bash
+curl -sS -X POST "$MODAL_SPEECH_ENDPOINT" \
+  -F "audio=@path/to/audio.wav"
+```
+
 Stop Modal to save cost:
 
 ```bash
 uv run modal app stop dukaan-saathi-receipt-vlm || true
+uv run modal app stop dukaan-saathi-speech-asr || true
 uv run modal app list
 ```
 
@@ -244,12 +274,13 @@ Use this flow for the hackathon demo video:
 6. Show reorder draft suggesting Bingo.
 7. Upload a supplier receipt photo.
 8. MiniCPM-V extracts imperfect rows.
-9. Correct them with: first one Parle bulk, second one Bingo
-10. Click Apply correction.
-11. Show rows mapped to known inventory products.
-12. Click Approve receipt rows.
-13. Show inventory updated.
-14. Show reorder draft updated.
+9. Type or record this correction: first one Parle bulk, second one Bingo
+10. If using audio, click Transcribe correction audio.
+11. Click Apply correction.
+12. Show rows mapped to known inventory products.
+13. Click Approve receipt rows.
+14. Show inventory updated.
+15. Show reorder draft updated.
 ```
 
 ## Local text-only receipt test
@@ -312,4 +343,3 @@ model output
 ```
 
 This is the core design principle of Dukaan Saathi.
-

@@ -5,6 +5,7 @@ import pandas as pd
 import gradio as gr
 
 from dukaan_saathi.integrations.modal_receipt import extract_receipt_with_modal
+from dukaan_saathi.integrations.speech import transcribe_audio
 from dukaan_saathi.parsers.receipt_text import parse_receipt_text
 from dukaan_saathi.parsers.receipt_correction import apply_receipt_correction_command
 from dukaan_saathi.parsers.stock_command import parse_stock_command
@@ -138,6 +139,16 @@ def handle_extract_receipt_image(image_path):
     rows, trace = extract_receipt_with_modal(image_path)
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
     return df, "\n".join(trace)
+
+
+def handle_transcribe_correction_audio(audio_path, current_command: str):
+    transcript, trace = transcribe_audio(audio_path)
+    if transcript.strip():
+        trace.append("Filled correction command from speech transcript.")
+        return transcript.strip(), "\n".join(trace)
+
+    trace.append("No transcript produced; keeping existing correction command.")
+    return current_command or "", "\n".join(trace)
 
 
 def handle_apply_receipt_correction(receipt_df, command_text: str):
@@ -286,6 +297,17 @@ def build_demo() -> gr.Blocks:
                 wrap=True,
                 label=bi("Editable extracted receipt rows", "సవరించగలిగే బిల్ వరుసలు"),
             )
+            with gr.Row():
+                receipt_correction_audio = gr.Audio(
+                    label=bi("Correction audio", "సవరణ ఆడియో"),
+                    type="filepath",
+                    sources=["microphone", "upload"],
+                    scale=3,
+                )
+                transcribe_correction_btn = gr.Button(
+                    bi("Transcribe correction audio", "ఆడియోను టెక్స్ట్ చేయి"),
+                    scale=1,
+                )
             receipt_correction_input = gr.Textbox(
                 label=bi("Correction command", "సవరణ కమాండ్"),
                 placeholder="first one Parle bulk, second one Bingo",
@@ -314,6 +336,11 @@ def build_demo() -> gr.Blocks:
                 fn=handle_extract_receipt_image,
                 inputs=receipt_image,
                 outputs=[receipt_table, receipt_trace],
+            )
+            transcribe_correction_btn.click(
+                fn=handle_transcribe_correction_audio,
+                inputs=[receipt_correction_audio, receipt_correction_input],
+                outputs=[receipt_correction_input, receipt_trace],
             )
             apply_receipt_correction_btn.click(
                 fn=handle_apply_receipt_correction,
