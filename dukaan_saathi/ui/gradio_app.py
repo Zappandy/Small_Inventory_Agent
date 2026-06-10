@@ -6,6 +6,7 @@ import gradio as gr
 
 from dukaan_saathi.integrations.modal_receipt import extract_receipt_with_modal
 from dukaan_saathi.parsers.receipt_text import parse_receipt_text
+from dukaan_saathi.parsers.receipt_correction import apply_receipt_correction_command
 from dukaan_saathi.parsers.stock_command import parse_stock_command
 from dukaan_saathi.services.inventory import approve_command_action, approve_receipt_rows
 from dukaan_saathi.services.reorder import draft_reorder
@@ -135,6 +136,12 @@ def handle_parse_receipt(image, raw_text: str):
 
 def handle_extract_receipt_image(image_path):
     rows, trace = extract_receipt_with_modal(image_path)
+    df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
+    return df, "\n".join(trace)
+
+
+def handle_apply_receipt_correction(receipt_df, command_text: str):
+    rows, trace = apply_receipt_correction_command(receipt_df, command_text)
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
     return df, "\n".join(trace)
 
@@ -279,13 +286,21 @@ def build_demo() -> gr.Blocks:
                 wrap=True,
                 label=bi("Editable extracted receipt rows", "సవరించగలిగే బిల్ వరుసలు"),
             )
+            receipt_correction_input = gr.Textbox(
+                label=bi("Correction command", "సవరణ కమాండ్"),
+                placeholder="first one Parle bulk, second one Bingo",
+                lines=2,
+            )
+            apply_receipt_correction_btn = gr.Button(
+                bi("Apply correction", "సవరణ వర్తింపజేయి"),
+            )
             receipt_trace = gr.Textbox(
                 label=bi("Receipt trace", "బిల్ ట్రేస్"),
                 lines=10,
                 elem_classes=["trace-box"],
             )
             approve_receipt_btn = gr.Button(
-                bi("Approve receipt import", "బిల్ ఇంపోర్ట్ ఆమోదించు"),
+                bi("Approve receipt rows", "బిల్ వరుసలు ఆమోదించు"),
                 variant="primary",
             )
             receipt_result = gr.Textbox(label=bi("Approval result", "ఫలితం"))
@@ -298,6 +313,11 @@ def build_demo() -> gr.Blocks:
             extract_image_btn.click(
                 fn=handle_extract_receipt_image,
                 inputs=receipt_image,
+                outputs=[receipt_table, receipt_trace],
+            )
+            apply_receipt_correction_btn.click(
+                fn=handle_apply_receipt_correction,
+                inputs=[receipt_table, receipt_correction_input],
                 outputs=[receipt_table, receipt_trace],
             )
 

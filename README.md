@@ -1,5 +1,6 @@
 ---
-title: Dukaan Inventory — Telugu Convenience Store Agent
+
+title: Dukaan Saathi — Small-Model Inventory Copilot
 emoji: 🛒
 colorFrom: blue
 colorTo: green
@@ -9,126 +10,306 @@ app_file: app.py
 pinned: false
 license: mit
 tags:
-  - inventory
-  - telugu
-  - llama-cpp
-  - langgraph
-  - agentic
-  - indic-languages
-  - rag
-  - lora-finetune
+
+* inventory
+* kirana
+* telugu
+* gradio
+* minicpm-v
+* modal
+* sqlite
+* human-in-the-loop
+* small-business
+* receipt-parsing
+
 ---
 
-# Dukaan Saathi · Telugu Inventory Copilot for Kirana Stores
+# Dukaan Saathi · Small-Model Inventory Copilot for Kirana Stores
 
-Dukaan Saathi is a small-model inventory assistant for a tiny convenience store in Hyderabad.
+Dukaan Saathi is a phone-friendly inventory copilot for a small Indian convenience store.
 
-The store owner speaks Telugu during the day, sells products with English names, and receives messy supplier receipts on paper. The app helps with the daily inventory loop:
+The store owner uses Telugu/code-mixed commands during the day, sells products with English names, and receives messy supplier receipts on paper. The app helps turn those messy inputs into safe, reviewable inventory updates.
 
-1. Understand Telugu/code-mixed stock commands
-2. Extract line items from supplier receipt photos
-3. Check inventory thresholds
-4. Draft reorder purchase orders by supplier
-5. Ask the owner to approve every update before anything changes
+The goal is **not perfect OCR**. Supplier receipts can be noisy, handwritten, folded, and inconsistent. Dukaan Saathi uses a small vision model to create a draft, then lets the owner quickly correct it before anything touches inventory.
 
-This is not a full ERP, POS system, or autonomous purchasing bot. It is a local-first assistant for one real workflow: keeping shelves stocked without forcing the owner to type everything into a spreadsheet.
+## Core workflow
 
-The LLM does not store inventory or make final business decisions. It only interprets messy inputs and proposes structured actions. Inventory math, thresholds, purchase-order grouping, and database updates are handled by deterministic Python tools. Every stock update and reorder draft requires human approval.
+```text
+receipt photo / text command
+→ AI draft
+→ owner correction
+→ owner approval
+→ inventory update
+→ reorder suggestion
+```
 
+Inventory is never updated directly from model output. Every write is approval-gated.
 
 ## What it does
 
-- **Telugu/code-mixed stock commands**  
-  Example: `Bingo అయిపోయింది` → detects that Bingo is out of stock and proposes an inventory update.
+### Telugu/code-mixed stock commands
 
-- **Receipt photo parsing**  
-  Upload a supplier bill and the app extracts product names, quantities, costs, and supplier names into structured JSON.
+Example:
 
-- **Inventory ledger**  
-  Every approved stock change is written to SQLite with timestamp, source, and reason.
-
-- **Reorder suggestions**  
-  When stock falls below threshold, the agent drafts a purchase order grouped by supplier.
-
-- **Human approval**  
-  The owner must approve receipt imports, stock updates, and purchase orders before they are applied.
-
-- **Agent trace panel**  
-  The UI shows each step: intent detection, product matching, threshold check, supplier grouping, and approval status.
-
-## Architecture
-
+```text
+Bingo అయిపోయింది
 ```
-Telugu / code-mixed command
-        │
-Receipt photo
-        │
-        ▼
-Gradio UI
-        │
-        ▼
-Small-model router
-(intent, receipt extraction, reorder explanation)
-        │
-        ▼
-Deterministic inventory tools
-- match_product()
-- update_stock()
-- parse_receipt_json()
-- check_thresholds()
-- draft_purchase_order()
-        │
-        ▼
-Human approval screen
-        │
-        ▼
-SQLite inventory ledger
-        │
-        ▼
-Telugu + English response
 
+The app detects that Bingo is out of stock and proposes an inventory update. The owner must approve before the stock value changes.
+
+### Receipt photo extraction
+
+The owner uploads a supplier receipt photo. MiniCPM-V extracts likely product rows, quantities, and amounts into a review table.
+
+The extraction can be imperfect. That is expected.
+
+Example noisy draft:
+
+```text
+1. Port Ranges (c), qty 1, amount 2450
+2. Chocoly, qty 1, amount 8702
 ```
-All models run locally via **llama.cpp** — no cloud APIs.
 
-## TODO: REVIEW IF WHATS UNDER HERE IS STILL RELEVANT
----
-## Models used (all < 32B)
+### Phone-friendly correction commands
 
-| Model | Size | Role |
-|---|---|---|
-| Llama-3.2-3B-Instruct Q4_K_M | 2GB | Orchestrator / intent classification |
-| Mistral-7B-Instruct Q4_K_M | 4.1GB | Inventory, reorder, reporting |
-| Mistral-7B LoRA (finetuned) | 4.1GB | Receipt line-item extraction |
-| Qwen2.5-VL-7B-Instruct | 7GB | Receipt photo OCR |
-| Whisper small | 244MB | Telugu speech recognition |
-| IndicTrans2-1B (×2) | 2GB | Telugu↔English translation |
+Instead of forcing spreadsheet-style editing on a phone, the owner can type or dictate a simple correction:
 
-## Finetuning
+```text
+first one Parle bulk, second one Bingo
+```
 
-`mistral-7b-receipt` is a LoRA finetune of Mistral-7B on real receipt photos from
-Mahalakshmi Marketing and Sri Venkateshwara Marketing (Malkajgiri, Hyderabad).
-Training data: handwritten bills, printed tax invoices, and daily sales notes —
-all annotated with structured JSON ground truth.
+The app remaps the rows to known inventory products:
 
-Trained with [Unsloth](https://github.com/unslothai/unsloth) on a T4 GPU in ~45 minutes.
-Exported as Q4_K_M GGUF for llama.cpp inference.
+```text
+row 1 → Parle (bulk)
+row 2 → Bingo (C)
+```
 
-## What we learned
+Matched rows become candidates for approval.
 
-1. **Telugu + English code-switching is the real use case** — the owner says product names
-   in English mid-sentence in Telugu. IndicTrans2 handles this well because it was trained
-   on Indic code-mixed data.
+Supported correction examples:
 
-2. **Finetuning on 3 real receipts beats prompting a general model** — the handwritten
-   receipt format (e.g. `4 X 870 = 3480`) is rare in general training data. Even 10 examples
-   dramatically improved extraction accuracy.
+```text
+first one Parle bulk
+second one Bingo
+row 1 Parle bulk
+row 2 Bingo
+skip row 2
+quantity row 1 is 4
+```
 
-3. **LangGraph's streaming events are perfect for agent trace UIs** — each node emits
-   a step event that maps directly to a trace line in the Gradio UI. Zero extra instrumentation needed.
+### Approval-gated inventory updates
 
-4. **llama.cpp on HF Spaces T4 is production-viable for this use case** — Mistral-7B Q4_K_M
-   runs at ~8 tokens/second on T4, which is fast enough for an inventory tool where the owner
-   isn't expecting instant responses.
+The owner must explicitly approve stock commands and receipt rows before SQLite inventory is updated.
 
-5. **HITL is not an afterthought — it's the product** — the owner's trust in the system
-   comes entirely from the approval step. Never automate the purchase order.
+### Reorder suggestions
+
+When stock falls below threshold, the app drafts reorder suggestions grouped by supplier. Nothing is sent or purchased automatically.
+
+## Why small models fit this problem
+
+Small models are good enough to turn messy receipts and natural commands into useful drafts, but they should not be trusted to update business records directly.
+
+Dukaan Saathi uses the model for interpretation and deterministic Python for safety-critical inventory logic:
+
+```text
+MiniCPM-V output
+→ parsed candidate rows
+→ product matching
+→ owner correction
+→ owner approval
+→ SQLite write
+```
+
+This keeps the workflow useful even when the model makes mistakes.
+
+## Current stack
+
+* **Gradio / Hugging Face Space** for the demo UI
+* **MiniCPM-V 4.6** for receipt image extraction
+* **Modal** for hosting the vision model endpoint
+* **SQLite** for local inventory state
+* **uv** for Python environment and commands
+* **Deterministic Python parsers/services** for:
+
+  * stock command parsing
+  * receipt text parsing
+  * receipt correction commands
+  * product matching
+  * inventory updates
+  * reorder drafts
+
+## Main files
+
+```text
+app.py
+dukaan_saathi/ui/gradio_app.py
+dukaan_saathi/parsers/stock_command.py
+dukaan_saathi/parsers/receipt_text.py
+dukaan_saathi/parsers/receipt_correction.py
+dukaan_saathi/services/inventory.py
+dukaan_saathi/services/reorder.py
+dukaan_saathi/integrations/modal_receipt.py
+dukaan_saathi/integrations/vision.py
+modal_apps/receipt_vlm_service.py
+smoke_tests/smoke_test.py
+smoke_tests/test_receipt_parser_regression.py
+smoke_tests/test_receipt_correction.py
+```
+
+## Run locally
+
+Install or sync dependencies:
+
+```bash
+uv sync
+```
+
+Run the smoke test:
+
+```bash
+uv run python smoke_tests/smoke_test.py
+```
+
+Run parser regression tests:
+
+```bash
+uv run python -m pytest smoke_tests/test_receipt_parser_regression.py -q
+uv run python -m pytest smoke_tests/test_receipt_correction.py -q
+```
+
+Run the Gradio app:
+
+```bash
+scripts/run_app.sh
+```
+
+Open the local Gradio URL shown in the terminal, usually:
+
+```text
+http://127.0.0.1:7860
+```
+
+## Modal receipt endpoint
+
+Deploy the MiniCPM-V receipt endpoint:
+
+```bash
+scripts/modal_deploy.sh modal_apps/receipt_vlm_service.py
+```
+
+Load the endpoint environment:
+
+```bash
+source scripts/_env.sh
+```
+
+Health check:
+
+```bash
+BASE_URL="${MODAL_RECEIPT_ENDPOINT%/extract}"
+curl "$BASE_URL/health"
+```
+
+Test receipt extraction directly:
+
+```bash
+curl -sS -X POST "$MODAL_RECEIPT_ENDPOINT" \
+  -F "image=@samples/receipts/receipt.jpeg"
+```
+
+Stop Modal to save cost:
+
+```bash
+uv run modal app stop dukaan-saathi-receipt-vlm || true
+uv run modal app list
+```
+
+Look for:
+
+```text
+Tasks 0
+```
+
+## Demo flow
+
+Use this flow for the hackathon demo video:
+
+```text
+1. Open Dukaan Saathi.
+2. Show current inventory.
+3. Enter: Bingo అయిపోయింది
+4. Click Parse command.
+5. Approve the proposed stock update.
+6. Show reorder draft suggesting Bingo.
+7. Upload a supplier receipt photo.
+8. MiniCPM-V extracts imperfect rows.
+9. Correct them with: first one Parle bulk, second one Bingo
+10. Click Apply correction.
+11. Show rows mapped to known inventory products.
+12. Click Approve receipt rows.
+13. Show inventory updated.
+14. Show reorder draft updated.
+```
+
+## Local text-only receipt test
+
+You can test the correction flow without Modal by pasting this into the Receipt Import text box:
+
+```text
+Mahalakshmi Marketing
+
+| S.No | Particulars | Qty | Rate | Amount |
+| 5/ | Port | 1 | X2450 | 2450 |
+| 10/ | Rs.g/c | 4 | X8702 | 3480 |
+```
+
+Click:
+
+```text
+Parse pasted/sample text
+```
+
+Then enter this correction command:
+
+```text
+first one Parle bulk, second one Bingo
+```
+
+Click:
+
+```text
+Apply correction
+```
+
+Expected result:
+
+```text
+row 1 → Parle (bulk), apply=True
+row 2 → Bingo (C), apply=True
+```
+
+Then click:
+
+```text
+Approve receipt rows
+```
+
+Inventory should update only after approval.
+
+## Safety rule
+
+Model output never writes inventory directly.
+
+The app always follows this flow:
+
+```text
+model output
+→ parsed draft
+→ owner review/correction
+→ owner approval
+→ inventory write
+```
+
+This is the core design principle of Dukaan Saathi.
+
