@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 import modal
+from fastapi import Request
 
 
 APP_NAME = "dukaan-saathi-speech-asr"
@@ -76,7 +77,7 @@ def health():
     scaledown_window=300,
 )
 @modal.fastapi_endpoint(method="POST", label="speech-transcribe")
-async def transcribe(request):
+async def transcribe(request: Request):
     pipe = _get_pipe()
 
     form = await request.form()
