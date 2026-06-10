@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source scripts/_env.sh
+mkdir -p benchmarks/results
 
-if [[ -z "${MINICPM_RECEIPT_ENDPOINT:-}" && -z "${MOLMO_RECEIPT_ENDPOINT:-}" ]]; then
-  echo "Set at least one benchmark endpoint in .env.local:"
-  echo "  MINICPM_RECEIPT_ENDPOINT=..."
-  echo "  MOLMO_RECEIPT_ENDPOINT=..."
-  exit 1
-fi
+uv run python benchmarks/receipt_eval.py \
+  --format markdown \
+  --out benchmarks/results/receipt_eval.md \
+  --correction "smoke_tests/fixtures/minicpm_receipt_raw_text_actual.txt::first one Parle bulk, second one Bingo"
 
-uv run python benchmarks/benchmark_receipt_models.py
+uv run python benchmarks/receipt_eval.py \
+  --format csv \
+  --out benchmarks/results/receipt_eval.csv \
+  --correction "smoke_tests/fixtures/minicpm_receipt_raw_text_actual.txt::first one Parle bulk, second one Bingo"
+
+echo
+echo "Wrote:"
+echo "- benchmarks/results/receipt_eval.md"
+echo "- benchmarks/results/receipt_eval.csv"
