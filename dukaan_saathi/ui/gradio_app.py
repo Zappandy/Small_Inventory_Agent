@@ -12,6 +12,8 @@ from dukaan_saathi.parsers.stock_command import parse_stock_command
 from dukaan_saathi.services.inventory import approve_command_action, approve_receipt_rows
 from dukaan_saathi.services.reorder import draft_reorder
 from dukaan_saathi.storage import get_inventory, init_db
+from dukaan_saathi.agent import tools as agent_tools
+from dukaan_saathi.agent.agent import get_agent, format_agent_trace
 
 
 INVENTORY_COLUMNS = [
@@ -113,8 +115,15 @@ def empty_reorder_df() -> pd.DataFrame:
 
 
 def handle_parse_command(command: str):
-    action, trace = parse_stock_command(command)
-    return action, "\n".join(trace), action
+    try:
+        agent = get_agent()
+        agent.run(f"Parse this stock command and propose an inventory update: '{command}'")
+        action = agent_tools.get_last_action() or {}
+        trace = format_agent_trace(agent)
+    except Exception:
+        action, trace_list = parse_stock_command(command)
+        trace = "\n".join(trace_list)
+    return action, trace, action
 
 
 def handle_approve_command(action):
@@ -126,19 +135,38 @@ def handle_parse_receipt(image, raw_text: str):
     if image is not None and not raw_text.strip():
         trace = [
             "Receipt image received.",
-            "MVP note: OCR/VLM is not connected yet.",
-            "Paste OCR text manually for now; Modal VLM will replace this step later.",
+            "Use 'Extract from image with model' button to run MiniCPM-V OCR.",
         ]
         return empty_receipt_df(), "\n".join(trace)
 
-    rows, trace = parse_receipt_text(raw_text)
+    try:
+        agent = get_agent()
+        agent.run(f"Parse this receipt text and extract all line items:\n{raw_text}")
+        rows = agent_tools.get_last_receipt_rows() or []
+        trace = format_agent_trace(agent)
+    except Exception:
+        rows, trace_list = parse_receipt_text(raw_text)
+        trace = "\n".join(trace_list)
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
-    return df, "\n".join(trace)
+    return df, trace
+
 
 def handle_extract_receipt_image(image_path):
-    rows, trace = extract_receipt_with_modal(image_path)
+    try:
+        agent = get_agent()
+        agent.run(
+            f"Extract items from this receipt image and propose inventory updates. "
+            f"Image path: {image_path}"
+        )
+        rows = agent_tools.get_last_receipt_rows() or []
+        trace = format_agent_trace(agent)
+        if not rows:
+            raise ValueError("Agent returned no rows")
+    except Exception:
+        rows, trace_list = extract_receipt_with_modal(image_path)
+        trace = "\n".join(trace_list)
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
-    return df, "\n".join(trace)
+    return df, trace
 
 
 def handle_transcribe_correction_audio(audio_path, current_command: str):
