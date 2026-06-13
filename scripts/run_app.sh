@@ -19,12 +19,17 @@ while [[ $# -gt 0 ]]; do
       BACKEND="llamacpp"
       shift
       ;;
+    --modal-llm)
+      BACKEND="modal_llm"
+      shift
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: scripts/run_app.sh [--backend llamacpp|deterministic]
+Usage: scripts/run_app.sh [--backend llamacpp|modal_llm|deterministic]
 
 Runs the Gradio app through uv.
   --backend llamacpp       Use local llama.cpp receipt parser path (default)
+  --backend modal_llm      Use Modal-hosted receipt parser endpoint
   --backend deterministic  Use rule-based parser for local no-model testing
 EOF
       exit 0
@@ -37,7 +42,7 @@ EOF
 done
 
 case "$BACKEND" in
-  llamacpp|deterministic) ;;
+  llamacpp|modal_llm|deterministic) ;;
   *)
     echo "Invalid backend: $BACKEND. Expected llamacpp or deterministic." >&2
     exit 2

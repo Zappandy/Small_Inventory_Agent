@@ -13,6 +13,14 @@ os.environ["DB_PATH"] = str(TEST_DB)
 from dukaan_saathi.storage import init_db
 
 
+class _BrokenReactAgent:
+    def parse_stock_command(self, command: str):
+        raise RuntimeError("react down")
+
+    def parse_receipt_text(self, raw_text: str):
+        raise RuntimeError("react down")
+
+
 class AgentUiIntegrationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -33,27 +41,40 @@ class AgentUiIntegrationTest(unittest.TestCase):
         tools.reset_state()
         self.assertIsNone(tools.get_last_action())
 
-    def test_command_handler_falls_back_when_agent_unavailable(self) -> None:
+    def test_command_handler_uses_react_agent(self) -> None:
         from dukaan_saathi.ui import gradio_app
 
-        with patch.object(gradio_app, "_run_agent", side_effect=RuntimeError("llama down")):
+        action, trace, pending = gradio_app.handle_parse_command("Bingo అయిపోయింది")
+
+        self.assertEqual(action["status"], "pending_approval")
+        self.assertEqual(action["product_id"], "bingo_c")
+        self.assertEqual(pending, action)
+        self.assertIn("Thought:", trace)
+        self.assertIn("Action: parse_stock_command_tool", trace)
+        self.assertIn("Observation:", trace)
+
+    def test_command_handler_falls_back_when_react_agent_unavailable(self) -> None:
+        from dukaan_saathi.ui import gradio_app
+
+        with patch.object(gradio_app, "_react_agent", return_value=_BrokenReactAgent()):
             action, trace, pending = gradio_app.handle_parse_command("Bingo అయిపోయింది")
 
         self.assertEqual(action["status"], "pending_approval")
         self.assertEqual(action["product_id"], "bingo_c")
         self.assertEqual(pending, action)
-        self.assertIn("Agent unavailable; using deterministic parser", trace)
+        self.assertIn("ReAct agent unavailable; using deterministic parser", trace)
 
     def test_receipt_handler_falls_back_when_agent_unavailable(self) -> None:
         from dukaan_saathi.ui import gradio_app
 
         raw_text = "Mahalakshmi Marketing\nBingo 4 X 870 = 3480"
-        with patch.object(gradio_app, "_run_agent", side_effect=RuntimeError("llama down")):
-            df, trace = gradio_app.handle_parse_receipt(None, raw_text)
+        with patch.object(gradio_app.config, "RECEIPT_BACKEND", "deterministic"):
+            with patch.object(gradio_app, "_react_agent", return_value=_BrokenReactAgent()):
+                df, trace = gradio_app.handle_parse_receipt(None, raw_text)
 
         self.assertEqual(len(df), 1)
         self.assertEqual(df.iloc[0]["matched_product_id"], "bingo_c")
-        self.assertIn("Agent unavailable; using deterministic parser", trace)
+        self.assertIn("ReAct agent unavailable; using configured receipt backend (deterministic)", trace)
 
 
 if __name__ == "__main__":

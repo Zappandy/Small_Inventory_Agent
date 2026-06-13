@@ -10,6 +10,9 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 models/
+data/finetune/generated/
+*-receipt-lora/
+*.gguf
 
 # C extensions
 *.so

@@ -1,8 +1,9 @@
 """
-agent.py — smolagents ToolCallingAgent for Dukaan Saathi.
+agent.py — legacy smolagents ToolCallingAgent for Dukaan Saathi.
 
-The agent orchestrates tool calls using Llama-3.2-3B-Instruct via a local
-llama.cpp server on port 8080 (OpenAI-compatible /v1/chat/completions).
+The active Gradio path uses dukaan_saathi.agent.react_agent. This module is kept
+as an optional heavier agent implementation for experiments with model-driven
+tool calling.
 
 The agent proposes actions but never writes to the inventory database directly —
 all writes go through the Gradio approval step (approve_command_action /

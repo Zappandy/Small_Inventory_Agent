@@ -2,7 +2,7 @@
 tools.py — smolagents @tool definitions for Dukaan Saathi.
 
 Each tool wraps an existing service/parser function and returns a JSON string
-so the ToolCallingAgent can reason over the results.
+so the active ReAct router or optional ToolCallingAgent can reason over results.
 
 Results are also stored in _state so Gradio handlers can access structured data
 after agent.run() without having to parse agent.logs internals.
@@ -111,10 +111,10 @@ def extract_text_from_receipt_image(image_path: str) -> str:
 
 @tool
 def parse_receipt_text_tool(raw_text: str) -> str:
-    """Parse OCR receipt text into structured line items. Uses the fine-tuned
-    Llama-3.2-3B model via llama.cpp (port 8082) when available, otherwise falls
-    back to the deterministic Python parser. Returns a JSON list of row dicts with
-    fields: product_raw, matched_product_name, quantity, unit_price, total_price.
+    """Parse OCR receipt text into structured line items. Uses the configured
+    receipt backend: local llama.cpp, Modal-hosted LLM, or deterministic parser.
+    Returns a JSON list of row dicts with fields: product_raw,
+    matched_product_name, quantity, unit_price, total_price.
 
     Args:
         raw_text: Receipt OCR text or pasted receipt text to parse.
@@ -123,6 +123,9 @@ def parse_receipt_text_tool(raw_text: str) -> str:
     if config.RECEIPT_BACKEND == "llamacpp":
         from dukaan_saathi.integrations.llamacpp_receipt import parse_receipt_via_llm
         rows, _ = parse_receipt_via_llm(raw_text)
+    elif config.RECEIPT_BACKEND == "modal_llm":
+        from dukaan_saathi.integrations.modal_receipt_llm import parse_receipt_with_modal_llm
+        rows, _ = parse_receipt_with_modal_llm(raw_text)
     else:
         from dukaan_saathi.parsers.receipt_text import parse_receipt_text
         rows, _ = parse_receipt_text(raw_text)

@@ -6,6 +6,7 @@ import gradio as gr
 
 from dukaan_saathi.integrations.modal_receipt import extract_receipt_with_modal
 from dukaan_saathi.integrations.speech import transcribe_audio
+from dukaan_saathi import config
 from dukaan_saathi.parsers.receipt_text import parse_receipt_text
 from dukaan_saathi.parsers.receipt_correction import apply_receipt_correction_command
 from dukaan_saathi.parsers.stock_command import parse_stock_command
@@ -117,29 +118,36 @@ def empty_reorder_df() -> pd.DataFrame:
     return pd.DataFrame(columns=REORDER_COLUMNS)
 
 
-def _run_agent(prompt: str) -> tuple[object, str]:
-    from dukaan_saathi.agent import tools as agent_tools
-    from dukaan_saathi.agent.agent import format_agent_trace, get_agent
+def _react_agent():
+    from dukaan_saathi.agent.react_agent import get_react_agent
 
-    agent_tools.reset_state()
-    agent = get_agent()
-    result = agent.run(prompt)
-    return result, format_agent_trace(agent)
+    return get_react_agent()
+
+
+def _parse_receipt_with_configured_backend(raw_text: str):
+    if config.RECEIPT_BACKEND == "modal_llm":
+        from dukaan_saathi.integrations.modal_receipt_llm import parse_receipt_with_modal_llm
+
+        return parse_receipt_with_modal_llm(raw_text)
+
+    if config.RECEIPT_BACKEND == "llamacpp":
+        from dukaan_saathi.integrations.llamacpp_receipt import parse_receipt_via_llm
+
+        return parse_receipt_via_llm(raw_text)
+
+    return parse_receipt_text(raw_text)
 
 
 def handle_parse_command(command: str):
     try:
-        _, trace = _run_agent(
-            f"Parse this stock command and propose an inventory update: '{command}'"
-        )
-        from dukaan_saathi.agent import tools as agent_tools
-
-        action = agent_tools.get_last_action() or {}
+        result = _react_agent().parse_stock_command(command)
+        action = result.action or {}
+        trace = result.trace
         if action.get("status") != "pending_approval":
-            raise ValueError("Agent returned no pending approval action")
+            raise ValueError("ReAct agent returned no pending approval action")
     except Exception as exc:
         action, trace_list = parse_stock_command(command)
-        trace = "\n".join([f"Agent unavailable; using deterministic parser: {exc}", *trace_list])
+        trace = "\n".join([f"ReAct agent unavailable; using deterministic parser: {exc}", *trace_list])
     return action, trace, action
 
 
@@ -157,33 +165,31 @@ def handle_parse_receipt(image, raw_text: str):
         return empty_receipt_df(), "\n".join(trace)
 
     try:
-        _, trace = _run_agent(f"Parse this receipt text and extract all line items:\n{raw_text}")
-        from dukaan_saathi.agent import tools as agent_tools
-
-        rows = agent_tools.get_last_receipt_rows() or []
+        result = _react_agent().parse_receipt_text(raw_text)
+        rows = result.receipt_rows or []
+        trace = result.trace
         if not rows:
-            raise ValueError("Agent returned no receipt rows")
+            raise ValueError("ReAct agent returned no receipt rows")
     except Exception as exc:
-        rows, trace_list = parse_receipt_text(raw_text)
-        trace = "\n".join([f"Agent unavailable; using deterministic parser: {exc}", *trace_list])
+        rows, trace_list = _parse_receipt_with_configured_backend(raw_text)
+        trace = "\n".join([
+            f"ReAct agent unavailable; using configured receipt backend ({config.RECEIPT_BACKEND}): {exc}",
+            *trace_list,
+        ])
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
     return df, trace
 
 
 def handle_extract_receipt_image(image_path):
     try:
-        _, trace = _run_agent(
-            f"Extract items from this receipt image and propose inventory updates. "
-            f"Image path: {image_path}"
-        )
-        from dukaan_saathi.agent import tools as agent_tools
-
-        rows = agent_tools.get_last_receipt_rows() or []
+        result = _react_agent().extract_receipt_image(str(image_path or ""))
+        rows = result.receipt_rows or []
+        trace = result.trace
         if not rows:
-            raise ValueError("Agent returned no rows")
+            raise ValueError("ReAct agent returned no rows")
     except Exception as exc:
         rows, trace_list = extract_receipt_with_modal(image_path)
-        trace = "\n".join([f"Agent image flow unavailable; using Modal receipt client: {exc}", *trace_list])
+        trace = "\n".join([f"ReAct image flow unavailable; using Modal receipt client: {exc}", *trace_list])
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
     return df, trace
 

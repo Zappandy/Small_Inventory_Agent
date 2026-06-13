@@ -20,6 +20,13 @@ case "$SERVICE" in
     ENV_VAR="${5:-MODAL_SPEECH_ENDPOINT}"
     ALSO_ARGS=(--also "SPEECH_ASR_ENDPOINT")
     ;;
+  modal_apps/receipt_llm_service.py)
+    APP_NAME="${2:-dukaan-saathi-receipt-llm}"
+    FUNCTION_NAME="${3:-api}"
+    ROUTE="${4:-/parse}"
+    ENV_VAR="${5:-MODAL_RECEIPT_LLM_ENDPOINT}"
+    ALSO_ARGS=(--also "MODAL_RECEIPT_PARSER_ENDPOINT")
+    ;;
   *)
     APP_NAME="${2:?Usage: scripts/modal_deploy.sh <service> <app-name> <function-name> [route] [env-var]}"
     FUNCTION_NAME="${3:?Usage: scripts/modal_deploy.sh <service> <app-name> <function-name> [route] [env-var]}"

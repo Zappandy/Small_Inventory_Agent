@@ -129,7 +129,8 @@ This keeps the workflow useful even when the model makes mistakes.
 ## Current stack
 
 * **Gradio / Hugging Face Space** for the demo UI
-* **llama.cpp + smolagents** for the default local agent and receipt parser path
+* **Lean ReAct tool router** for selecting the small set of inventory/receipt tools
+* **llama.cpp + smolagents tools** for the default local model-backed receipt parser path
 * **MiniCPM-V 4.6** for receipt image extraction
 * **Distil-Whisper small English** for correction-command speech transcription
 * **Modal** for hosting model endpoints
@@ -151,6 +152,89 @@ For the hackathon demo, prefer the probabilistic llama.cpp path. The
 deterministic parser path exists for smoke tests, offline debugging, and safety
 fallbacks; it is not the primary demo experience.
 
+Modal can also host the receipt parser model. This is useful when local or
+Hugging Face environments hit GPU/storage/runtime limits. With the current tiny
+fine-tuning set, treat Modal fine-tuning as a demo-oriented adapter that improves
+format following on known receipt styles, not as a generally reliable parser.
+
+## Runtime pipeline
+
+The local orchestrator is:
+
+```bash
+scripts/dev.sh
+```
+
+It selects one of three staged runtime paths:
+
+```text
+scripts/dev.sh --llamacpp
+→ scripts/start_llamacpp.sh
+  → uv run python scripts/download_models.py
+  → uv run python -m llama_cpp.server on port 8080
+  → uv run python -m llama_cpp.server on port 8082
+→ scripts/run_app.sh --backend llamacpp
+  → uv run python app.py
+```
+
+```text
+scripts/dev.sh --modal-llm
+→ scripts/run_app.sh --backend modal_llm
+  → uv run python app.py
+  → receipt text parsing calls MODAL_RECEIPT_LLM_ENDPOINT
+```
+
+```text
+scripts/dev.sh --deterministic
+→ scripts/run_app.sh --backend deterministic
+  → uv run python app.py
+  → receipt text parsing uses dukaan_saathi/parsers/receipt_text.py
+```
+
+Receipt image and speech are separate optional Modal services:
+
+```text
+receipt image
+→ dukaan_saathi/integrations/modal_receipt.py
+→ MODAL_RECEIPT_ENDPOINT
+→ modal_apps/receipt_vlm_service.py
+→ raw receipt text
+→ configured receipt parser backend
+→ editable receipt table
+→ owner approval
+→ dukaan_saathi/services/inventory.py
+```
+
+```text
+correction audio
+→ dukaan_saathi/integrations/speech.py
+→ MODAL_SPEECH_ENDPOINT
+→ correction textbox
+→ owner applies correction
+→ owner approval
+```
+
+Inventory writes only happen after approval:
+
+```text
+approve command / approve receipt rows
+→ dukaan_saathi/services/inventory.py
+→ dukaan_saathi/storage.py
+→ SQLite stock ledger
+```
+
+## Agent status
+
+The active Gradio path uses a lean ReAct-style router in
+`dukaan_saathi/agent/react_agent.py`. It records `Thought`, `Action`, and
+`Observation` trace lines, chooses the correct existing tool for the small task
+set, and never writes inventory directly.
+
+The heavier `smolagents.ToolCallingAgent` implementation remains in
+`dukaan_saathi/agent/agent.py`, but it is no longer the primary Gradio path. The
+ReAct router calls the existing tool layer directly, which keeps the app simpler
+while preserving the same approval gates.
+
 ## Main files
 
 ```text
@@ -170,6 +254,13 @@ dukaan_saathi/integrations/speech.py
 dukaan_saathi/integrations/vision.py
 modal_apps/receipt_vlm_service.py
 modal_apps/speech_asr_service.py
+modal_apps/receipt_llm_service.py
+modal_apps/receipt_data_generator.py
+scripts/dev.sh
+scripts/start_llamacpp.sh
+scripts/run_app.sh
+scripts/modal_finetune_receipt.sh
+scripts/modal_generate_receipt_examples.sh
 smoke_tests/smoke_test.py
 smoke_tests/test_receipt_parser_regression.py
 smoke_tests/test_receipt_correction.py
@@ -205,8 +296,8 @@ uv run python -m pytest smoke_tests/test_receipt_correction.py -q
 ### Recommended hackathon demo path
 
 This is the probabilistic path. It starts local llama.cpp model servers and then
-starts Gradio with the smolagents/llama.cpp backend. Models are stored in the
-repo-local ignored `models/` directory.
+starts Gradio with the ReAct router plus llama.cpp receipt backend. Models are
+stored in the repo-local ignored `models/` directory.
 
 ```bash
 scripts/dev.sh --llamacpp
@@ -248,6 +339,57 @@ The default backend is:
 ```text
 RECEIPT_BACKEND=llamacpp
 ```
+
+### Modal-hosted receipt parser path
+
+Use this when Hugging Face limits or local GPU limits block fine-tuning. The
+training job stores a LoRA adapter in a Modal Volume, so Hugging Face Hub is no
+longer required as the artifact store.
+
+Step 1: generate Modal LLM-augmented data if you want more training examples:
+
+```bash
+scripts/modal_generate_receipt_examples.sh \
+  --count 48 \
+  --output data/finetune/generated/receipt_examples_modal_synthetic.jsonl
+```
+
+Step 2: train the receipt LoRA on Modal. To train on only the hand-authored
+examples:
+
+```bash
+scripts/modal_finetune_receipt.sh --max-steps 30 --epochs 8
+```
+
+Or train with Modal LLM-generated examples appended automatically:
+
+```bash
+scripts/modal_finetune_receipt.sh --modal-synthetic-count 48 --max-steps 60 --epochs 8
+```
+
+Step 3: deploy the Modal receipt parser endpoint:
+
+```bash
+scripts/modal_deploy.sh modal_apps/receipt_llm_service.py
+```
+
+This writes `MODAL_RECEIPT_LLM_ENDPOINT` to `.env`.
+
+Step 4: run Gradio against the Modal parser:
+
+```bash
+scripts/dev.sh --modal-llm
+```
+
+Limitations:
+
+* The current dataset has only a few examples, so overfitting is likely.
+* LLM-generated synthetic examples are more varied than template examples, but
+  they still need validation and should augment real receipt examples, not
+  replace them.
+* Modal cold starts can be slow for model endpoints.
+* The Modal adapter is not automatically converted to GGUF for local llama.cpp.
+* Keep owner approval enabled; model output still only populates editable rows.
 
 ### Deterministic fallback path
 

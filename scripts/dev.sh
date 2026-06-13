@@ -18,17 +18,22 @@ while [[ $# -gt 0 ]]; do
       BACKEND="llamacpp"
       shift
       ;;
+    --modal-llm)
+      BACKEND="modal_llm"
+      shift
+      ;;
     --model-dir)
       MODEL_DIR="$2"
       shift 2
       ;;
     -h|--help)
       cat <<'EOF'
-Usage: scripts/dev.sh [--backend deterministic|llamacpp] [--model-dir models]
+Usage: scripts/dev.sh [--backend deterministic|llamacpp|modal_llm] [--model-dir models]
 
 Local staged entrypoint:
   --backend deterministic  Start only Gradio with rule-based parsing
   --backend llamacpp       Download/start local llama.cpp servers, then Gradio
+  --backend modal_llm      Start Gradio against Modal receipt parser endpoint
 
 Examples:
   scripts/dev.sh --deterministic
@@ -47,6 +52,9 @@ case "$BACKEND" in
   deterministic)
     exec scripts/run_app.sh --backend deterministic
     ;;
+  modal_llm)
+    exec scripts/run_app.sh --backend modal_llm
+    ;;
   llamacpp)
     export MODEL_DIR
     scripts/start_llamacpp.sh --model-dir "$MODEL_DIR" &
@@ -63,7 +71,7 @@ case "$BACKEND" in
     scripts/run_app.sh --backend llamacpp
     ;;
   *)
-    echo "Invalid backend: $BACKEND. Expected deterministic or llamacpp." >&2
+    echo "Invalid backend: $BACKEND. Expected deterministic, llamacpp, or modal_llm." >&2
     exit 2
     ;;
 esac
