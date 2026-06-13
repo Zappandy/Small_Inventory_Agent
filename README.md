@@ -5,7 +5,7 @@ emoji: 🛒
 colorFrom: blue
 colorTo: green
 sdk: gradio
-sdk_version: 4.44.0
+sdk_version: 6.16.0
 app_file: app.py
 pinned: false
 license: mit
@@ -125,6 +125,57 @@ MiniCPM-V output
 ```
 
 This keeps the workflow useful even when the model makes mistakes.
+
+## Prepared demo artifacts
+
+These are the ingredients that must exist before running the probabilistic demo path.
+
+### Fine-tuned receipt model
+
+A LoRA adapter trained on Llama-3.2-3B-Instruct, stored in a Modal Volume:
+
+```text
+Modal app:    dukaan-saathi-receipt-llm
+Modal Volume: dukaan-saathi-receipt-lora
+Adapter path: /adapters/receipt-lora
+Base model:   unsloth/Llama-3.2-3B-Instruct-bnb-4bit
+```
+
+The adapter is served via the Modal receipt parser endpoint. The endpoint URL is
+written to `.env` after deployment:
+
+```text
+MODAL_RECEIPT_LLM_ENDPOINT=https://summerdevlin46--dukaan-saathi-receipt-llm-api.modal.run/parse
+```
+
+This is not a local GGUF file. Inference goes through the Modal endpoint.
+
+### Training data
+
+| File | Examples | Source |
+|------|----------|--------|
+| `data/finetune/receipt_examples.jsonl` | 6 | Hand-authored |
+| `data/finetune/generated/receipt_examples_modal_synthetic.jsonl` | 22 | Modal LLM-generated |
+
+To regenerate synthetic examples:
+
+```bash
+scripts/modal_generate_receipt_examples.sh \
+  --count 48 \
+  --output data/finetune/generated/receipt_examples_modal_synthetic.jsonl
+```
+
+To retrain the LoRA adapter on Modal:
+
+```bash
+scripts/modal_finetune_receipt.sh --modal-synthetic-count 48 --max-steps 60 --epochs 8
+```
+
+To redeploy the inference endpoint after retraining:
+
+```bash
+scripts/modal_deploy.sh modal_apps/receipt_llm_service.py
+```
 
 ## Current stack
 
@@ -296,23 +347,24 @@ uv run python -m pytest smoke_tests/test_receipt_correction.py -q
 
 ### Recommended hackathon demo path
 
-This is the probabilistic path. It starts local llama.cpp model servers and then
-starts Gradio with the ReAct router plus llama.cpp receipt backend. Models are
-stored in the repo-local ignored `models/` directory.
+This is the probabilistic path. It uses the fine-tuned LoRA adapter deployed on
+Modal (see [Prepared demo artifacts](#prepared-demo-artifacts)). Requires the
+`.env` file with `MODAL_RECEIPT_LLM_ENDPOINT` set.
 
 ```bash
-scripts/dev.sh --llamacpp
+scripts/dev.sh --modal-llm
 ```
 
-If `HF_RECEIPT_MODEL_REPO` is unset, startup uses the base Llama-3.2-3B model
-for the receipt parser port. That keeps the app runnable, but receipt parsing
-quality will be lower than with the fine-tuned GGUF.
+Or directly:
 
-Expected local model servers:
+```bash
+scripts/run_app.sh --backend modal_llm
+```
+
+The default backend is:
 
 ```text
-http://127.0.0.1:8080/v1  # agent orchestrator
-http://127.0.0.1:8082/v1  # receipt parser
+RECEIPT_BACKEND=modal_llm
 ```
 
 Open the local Gradio URL shown in the terminal, usually:
@@ -321,75 +373,48 @@ Open the local Gradio URL shown in the terminal, usually:
 http://127.0.0.1:7860
 ```
 
-### Staged llama.cpp path
+### Local llama.cpp path (fallback)
 
-If you prefer separate terminals, start model servers first:
+Use this if the Modal endpoint is unavailable or you want a fully local run.
+Requires downloading the fine-tuned GGUF and starting two llama.cpp servers.
 
 ```bash
-scripts/start_llamacpp.sh
+scripts/dev.sh --llamacpp
 ```
 
-Then start Gradio:
+Or in separate terminals:
 
 ```bash
+scripts/start_llamacpp.sh        # starts ports 8080 and 8082
 scripts/run_app.sh --backend llamacpp
 ```
 
-The default backend is:
+Expected local model servers:
 
 ```text
-RECEIPT_BACKEND=llamacpp
+http://127.0.0.1:8080/v1  # agent orchestrator
+http://127.0.0.1:8082/v1  # receipt parser (fine-tuned)
 ```
+
+If `HF_RECEIPT_MODEL_REPO` is unset, the base Llama-3.2-3B model is used for
+the receipt parser port — quality will be lower than with the fine-tuned GGUF.
 
 ### Modal-hosted receipt parser path
 
-Use this when Hugging Face limits or local GPU limits block fine-tuning. The
-training job stores a LoRA adapter in a Modal Volume, so Hugging Face Hub is no
-longer required as the artifact store.
-
-Step 1: generate Modal LLM-augmented data if you want more training examples:
-
-```bash
-scripts/modal_generate_receipt_examples.sh \
-  --count 48 \
-  --output data/finetune/generated/receipt_examples_modal_synthetic.jsonl
-```
-
-Step 2: train the receipt LoRA on Modal. To train on only the hand-authored
-examples:
-
-```bash
-scripts/modal_finetune_receipt.sh --max-steps 30 --epochs 8
-```
-
-Or train with Modal LLM-generated examples appended automatically:
-
-```bash
-scripts/modal_finetune_receipt.sh --modal-synthetic-count 48 --max-steps 60 --epochs 8
-```
-
-Step 3: deploy the Modal receipt parser endpoint:
-
-```bash
-scripts/modal_deploy.sh modal_apps/receipt_llm_service.py
-```
-
-This writes `MODAL_RECEIPT_LLM_ENDPOINT` to `.env`.
-
-Step 4: run Gradio against the Modal parser:
+The fine-tuned LoRA adapter is already trained and deployed (see
+[Prepared demo artifacts](#prepared-demo-artifacts)). To run against it:
 
 ```bash
 scripts/dev.sh --modal-llm
 ```
 
+This is now the default. Ensure `.env` contains `MODAL_RECEIPT_LLM_ENDPOINT`.
+
 Limitations:
 
-* The current dataset has only a few examples, so overfitting is likely.
-* LLM-generated synthetic examples are more varied than template examples, but
-  they still need validation and should augment real receipt examples, not
-  replace them.
-* Modal cold starts can be slow for model endpoints.
-* The Modal adapter is not automatically converted to GGUF for local llama.cpp.
+* The training set is small (28 examples total), so the adapter improves format
+  following on known receipt styles rather than generalizing broadly.
+* Modal cold starts can add a few seconds to the first receipt parse.
 * Keep owner approval enabled; model output still only populates editable rows.
 
 ### Deterministic fallback path

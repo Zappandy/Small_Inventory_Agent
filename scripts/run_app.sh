@@ -3,7 +3,7 @@ set -euo pipefail
 
 source scripts/_env.sh
 
-BACKEND="${RECEIPT_BACKEND:-llamacpp}"
+BACKEND="${RECEIPT_BACKEND:-modal_llm}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
