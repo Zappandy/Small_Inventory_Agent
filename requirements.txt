@@ -1,8 +1,17 @@
-gradio>=4.44.0
+# HF Spaces dependency list — pip-installed by the Space runner.
+# This is NOT the source of truth for local development.
+#
+# Local dev uses pyproject.toml + uv.lock (run: uv sync).
+# Keep these two in sync manually when adding or removing dependencies:
+#   - Add runtime deps here AND in pyproject.toml [project.dependencies]
+#   - llama-cpp-python is intentionally excluded here (local llama.cpp path only)
+#   - requirements-train.txt covers fine-tuning deps (not needed at inference)
+
+gradio==6.16.0
 smolagents>=1.0
 huggingface_hub>=0.25.0
 pandas>=3.0.3
 pillow>=10.0.0
 requests>=2.31.0
 modal>=1.0.0
-llama-cpp-python[server]>=0.3.0
+# llama-cpp-python[server]>=0.3.0  # local llama.cpp path only, not needed on HF Spaces
