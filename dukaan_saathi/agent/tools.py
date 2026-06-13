@@ -19,13 +19,29 @@ from smolagents import tool
 # Single-user app (kirana owner's phone), so no concurrency concern.
 _state: dict[str, Any] = {
     "last_action": None,
+    "last_proposal": None,
     "last_receipt_rows": None,
     "last_raw_text": None,
 }
 
 
+def reset_state() -> None:
+    _state.update(
+        {
+            "last_action": None,
+            "last_proposal": None,
+            "last_receipt_rows": None,
+            "last_raw_text": None,
+        }
+    )
+
+
 def get_last_action() -> dict | None:
     return _state.get("last_action")
+
+
+def get_last_proposal() -> Any:
+    return _state.get("last_proposal")
 
 
 def get_last_receipt_rows() -> list[dict] | None:
@@ -40,8 +56,8 @@ def get_last_raw_text() -> str | None:
 
 @tool
 def get_inventory_snapshot() -> str:
-    """
-    Returns the current inventory of the kirana store as a JSON string.
+    """Returns the current inventory of the kirana store as a JSON string.
+
     Use this before proposing any inventory changes.
     """
     from dukaan_saathi.storage import get_inventory
@@ -51,8 +67,8 @@ def get_inventory_snapshot() -> str:
 
 @tool
 def draft_reorder_tool() -> str:
-    """
-    Generates a reorder purchase-order draft based on current low-stock items.
+    """Generates a reorder purchase-order draft based on current low-stock items.
+
     Returns a JSON list of suggested orders.
     """
     from dukaan_saathi.services.reorder import draft_reorder
@@ -64,10 +80,12 @@ def draft_reorder_tool() -> str:
 
 @tool
 def parse_stock_command_tool(command: str) -> str:
-    """
-    Parse a natural language stock command (Telugu/English code-mixed) into a
+    """Parse a natural language stock command (Telugu/English code-mixed) into a
     proposed inventory action. Input examples: "Bingo అయిపోయింది",
     "add Thums Up 12", "Lays Classic low". Returns a JSON action dict.
+
+    Args:
+        command: The owner's raw stock command text.
     """
     from dukaan_saathi.parsers.stock_command import parse_stock_command
     action, _ = parse_stock_command(command)
@@ -77,10 +95,12 @@ def parse_stock_command_tool(command: str) -> str:
 
 @tool
 def extract_text_from_receipt_image(image_path: str) -> str:
-    """
-    Extract raw OCR text from a receipt image using MiniCPM-V 4.6 on the Modal
+    """Extract raw OCR text from a receipt image using MiniCPM-V 4.6 on the Modal
     endpoint. Returns the raw pipe-separated text output from the vision model.
     Must be followed by parse_receipt_text_tool to get structured rows.
+
+    Args:
+        image_path: Local filesystem path to the uploaded receipt image.
     """
     from dukaan_saathi.integrations.modal_receipt import _extract_receipt_result_with_modal
     result = _extract_receipt_result_with_modal(image_path)
@@ -91,11 +111,13 @@ def extract_text_from_receipt_image(image_path: str) -> str:
 
 @tool
 def parse_receipt_text_tool(raw_text: str) -> str:
-    """
-    Parse OCR receipt text into structured line items. Uses the fine-tuned
+    """Parse OCR receipt text into structured line items. Uses the fine-tuned
     Llama-3.2-3B model via llama.cpp (port 8082) when available, otherwise falls
     back to the deterministic Python parser. Returns a JSON list of row dicts with
     fields: product_raw, matched_product_name, quantity, unit_price, total_price.
+
+    Args:
+        raw_text: Receipt OCR text or pasted receipt text to parse.
     """
     from dukaan_saathi import config
     if config.RECEIPT_BACKEND == "llamacpp":
@@ -110,10 +132,13 @@ def parse_receipt_text_tool(raw_text: str) -> str:
 
 @tool
 def apply_correction_to_receipt(rows_json: str, correction_command: str) -> str:
-    """
-    Apply a human correction command to receipt rows. Correction examples:
+    """Apply a human correction command to receipt rows. Correction examples:
     "first one Parle bulk, second one Bingo", "skip row 3", "row 2 quantity 10".
     Returns updated rows as JSON.
+
+    Args:
+        rows_json: JSON array of editable receipt row dictionaries.
+        correction_command: Owner's typed correction command.
     """
     from dukaan_saathi.parsers.receipt_correction import apply_receipt_correction_command
     rows = json.loads(rows_json)
@@ -124,9 +149,11 @@ def apply_correction_to_receipt(rows_json: str, correction_command: str) -> str:
 
 @tool
 def transcribe_audio_tool(audio_path: str) -> str:
-    """
-    Transcribe a correction audio recording to text using Distil-Whisper via
+    """Transcribe a correction audio recording to text using Distil-Whisper via
     the Modal ASR endpoint. Returns the transcription string.
+
+    Args:
+        audio_path: Local filesystem path to the audio file.
     """
     from dukaan_saathi.integrations.speech import transcribe_audio
     transcript, _ = transcribe_audio(audio_path)
@@ -137,14 +164,18 @@ def transcribe_audio_tool(audio_path: str) -> str:
 
 @tool
 def propose_inventory_update(changes_json: str) -> str:
-    """
-    Propose inventory changes for human review. This tool does NOT write to the
+    """Propose inventory changes for human review. This tool does NOT write to the
     database — it formats the proposed changes and returns them for display.
     The owner must click the Approve button in the UI to apply the changes.
+
+    Args:
+        changes_json: JSON object or array describing proposed inventory changes.
     """
     try:
         changes = json.loads(changes_json)
-        _state["last_action"] = changes
+        _state["last_proposal"] = changes
+        if isinstance(changes, dict) and changes.get("status") == "pending_approval":
+            _state["last_action"] = changes
         lines = [
             "Proposed inventory update (pending owner approval):",
             json.dumps(changes, indent=2, ensure_ascii=False),

@@ -12,8 +12,6 @@ from dukaan_saathi.parsers.stock_command import parse_stock_command
 from dukaan_saathi.services.inventory import approve_command_action, approve_receipt_rows
 from dukaan_saathi.services.reorder import draft_reorder
 from dukaan_saathi.storage import get_inventory, init_db
-from dukaan_saathi.agent import tools as agent_tools
-from dukaan_saathi.agent.agent import get_agent, format_agent_trace
 
 
 INVENTORY_COLUMNS = [
@@ -81,6 +79,11 @@ CUSTOM_CSS = """
 footer { display: none !important; }
 """
 
+THEME = gr.themes.Base(
+    primary_hue=gr.themes.colors.blue,
+    neutral_hue=gr.themes.colors.gray,
+)
+
 
 def list_sample_receipts() -> list[str]:
     if not SAMPLE_RECEIPT_DIR.exists():
@@ -114,15 +117,29 @@ def empty_reorder_df() -> pd.DataFrame:
     return pd.DataFrame(columns=REORDER_COLUMNS)
 
 
+def _run_agent(prompt: str) -> tuple[object, str]:
+    from dukaan_saathi.agent import tools as agent_tools
+    from dukaan_saathi.agent.agent import format_agent_trace, get_agent
+
+    agent_tools.reset_state()
+    agent = get_agent()
+    result = agent.run(prompt)
+    return result, format_agent_trace(agent)
+
+
 def handle_parse_command(command: str):
     try:
-        agent = get_agent()
-        agent.run(f"Parse this stock command and propose an inventory update: '{command}'")
+        _, trace = _run_agent(
+            f"Parse this stock command and propose an inventory update: '{command}'"
+        )
+        from dukaan_saathi.agent import tools as agent_tools
+
         action = agent_tools.get_last_action() or {}
-        trace = format_agent_trace(agent)
-    except Exception:
+        if action.get("status") != "pending_approval":
+            raise ValueError("Agent returned no pending approval action")
+    except Exception as exc:
         action, trace_list = parse_stock_command(command)
-        trace = "\n".join(trace_list)
+        trace = "\n".join([f"Agent unavailable; using deterministic parser: {exc}", *trace_list])
     return action, trace, action
 
 
@@ -140,31 +157,33 @@ def handle_parse_receipt(image, raw_text: str):
         return empty_receipt_df(), "\n".join(trace)
 
     try:
-        agent = get_agent()
-        agent.run(f"Parse this receipt text and extract all line items:\n{raw_text}")
+        _, trace = _run_agent(f"Parse this receipt text and extract all line items:\n{raw_text}")
+        from dukaan_saathi.agent import tools as agent_tools
+
         rows = agent_tools.get_last_receipt_rows() or []
-        trace = format_agent_trace(agent)
-    except Exception:
+        if not rows:
+            raise ValueError("Agent returned no receipt rows")
+    except Exception as exc:
         rows, trace_list = parse_receipt_text(raw_text)
-        trace = "\n".join(trace_list)
+        trace = "\n".join([f"Agent unavailable; using deterministic parser: {exc}", *trace_list])
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
     return df, trace
 
 
 def handle_extract_receipt_image(image_path):
     try:
-        agent = get_agent()
-        agent.run(
+        _, trace = _run_agent(
             f"Extract items from this receipt image and propose inventory updates. "
             f"Image path: {image_path}"
         )
+        from dukaan_saathi.agent import tools as agent_tools
+
         rows = agent_tools.get_last_receipt_rows() or []
-        trace = format_agent_trace(agent)
         if not rows:
             raise ValueError("Agent returned no rows")
-    except Exception:
+    except Exception as exc:
         rows, trace_list = extract_receipt_with_modal(image_path)
-        trace = "\n".join(trace_list)
+        trace = "\n".join([f"Agent image flow unavailable; using Modal receipt client: {exc}", *trace_list])
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
     return df, trace
 
@@ -201,11 +220,6 @@ def build_demo() -> gr.Blocks:
 
     with gr.Blocks(
         title="Dukaan Saathi",
-        css=CUSTOM_CSS,
-        theme=gr.themes.Base(
-            primary_hue=gr.themes.colors.blue,
-            neutral_hue=gr.themes.colors.gray,
-        ),
     ) as demo:
         pending_action = gr.State(None)
 

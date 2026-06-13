@@ -12,6 +12,7 @@ dependencies = [
     "modal>=1.0.0",
     "smolagents>=1.0",
     "huggingface_hub>=0.25.0",
+    "llama-cpp-python[server]>=0.3.0",
     "pytest",
 ]
 

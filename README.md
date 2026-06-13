@@ -129,12 +129,13 @@ This keeps the workflow useful even when the model makes mistakes.
 ## Current stack
 
 * **Gradio / Hugging Face Space** for the demo UI
+* **llama.cpp + smolagents** for the default local agent and receipt parser path
 * **MiniCPM-V 4.6** for receipt image extraction
 * **Distil-Whisper small English** for correction-command speech transcription
 * **Modal** for hosting model endpoints
 * **SQLite** for local inventory state
 * **uv** for Python environment and commands
-* **Deterministic Python parsers/services** for:
+* **Deterministic Python services and fallback parsers** for:
 
   * stock command parsing
   * receipt text parsing
@@ -142,6 +143,13 @@ This keeps the workflow useful even when the model makes mistakes.
   * product matching
   * inventory updates
   * reorder drafts
+
+Modal integrations are optional remote model services. The app-side Modal code
+stays as thin HTTP clients; model serving code lives in `modal_apps/`.
+
+For the hackathon demo, prefer the probabilistic llama.cpp path. The
+deterministic parser path exists for smoke tests, offline debugging, and safety
+fallbacks; it is not the primary demo experience.
 
 ## Main files
 
@@ -153,7 +161,11 @@ dukaan_saathi/parsers/receipt_text.py
 dukaan_saathi/parsers/receipt_correction.py
 dukaan_saathi/services/inventory.py
 dukaan_saathi/services/reorder.py
+dukaan_saathi/agent/agent.py
+dukaan_saathi/agent/tools.py
 dukaan_saathi/integrations/modal_receipt.py
+dukaan_saathi/integrations/llamacpp_llm.py
+dukaan_saathi/integrations/llamacpp_receipt.py
 dukaan_saathi/integrations/speech.py
 dukaan_saathi/integrations/vision.py
 modal_apps/receipt_vlm_service.py
@@ -171,23 +183,44 @@ Install or sync dependencies:
 uv sync
 ```
 
-Run the smoke test:
+Install receipt fine-tuning dependencies only when training:
 
 ```bash
-uv run python smoke_tests/smoke_test.py
+uv pip install -r requirements-train.txt
 ```
 
-Run parser regression tests:
+Run the required smoke test:
+
+```bash
+uv run scripts/smoke_test.sh
+```
+
+Run focused parser tests:
 
 ```bash
 uv run python -m pytest smoke_tests/test_receipt_parser_regression.py -q
 uv run python -m pytest smoke_tests/test_receipt_correction.py -q
 ```
 
-Run the Gradio app:
+### Recommended hackathon demo path
+
+This is the probabilistic path. It starts local llama.cpp model servers and then
+starts Gradio with the smolagents/llama.cpp backend. Models are stored in the
+repo-local ignored `models/` directory.
 
 ```bash
-scripts/run_app.sh
+scripts/dev.sh --llamacpp
+```
+
+If `HF_RECEIPT_MODEL_REPO` is unset, startup uses the base Llama-3.2-3B model
+for the receipt parser port. That keeps the app runnable, but receipt parsing
+quality will be lower than with the fine-tuned GGUF.
+
+Expected local model servers:
+
+```text
+http://127.0.0.1:8080/v1  # agent orchestrator
+http://127.0.0.1:8082/v1  # receipt parser
 ```
 
 Open the local Gradio URL shown in the terminal, usually:
@@ -195,6 +228,58 @@ Open the local Gradio URL shown in the terminal, usually:
 ```text
 http://127.0.0.1:7860
 ```
+
+### Staged llama.cpp path
+
+If you prefer separate terminals, start model servers first:
+
+```bash
+scripts/start_llamacpp.sh
+```
+
+Then start Gradio:
+
+```bash
+scripts/run_app.sh --backend llamacpp
+```
+
+The default backend is:
+
+```text
+RECEIPT_BACKEND=llamacpp
+```
+
+### Deterministic fallback path
+
+Use this only for fast UI/core workflow testing without model servers.
+Deterministic means the app uses the rule-based Python parsers in
+`dukaan_saathi/parsers/` instead of calling llama.cpp for receipt text parsing.
+Stock commands, pasted/sample receipt text, correction commands, approval, and
+reorder drafts all work. This is not the preferred hackathon demo path.
+
+```bash
+scripts/dev.sh --deterministic
+```
+
+Or:
+
+```bash
+scripts/run_app.sh --backend deterministic
+```
+
+Open the local Gradio URL shown in the terminal, usually:
+
+```text
+http://127.0.0.1:7860
+```
+
+The startup hook used by hosted environments is:
+
+```bash
+./startup.sh
+```
+
+It also uses `uv run` and repo-local `models/`.
 
 ## Modal endpoints
 

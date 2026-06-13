@@ -355,26 +355,41 @@ wheels = [
 ]
 
 [[package]]
+name = "diskcache"
+version = "5.6.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/21/1c1ffc1a039ddcc459db43cc108658f32c57d271d7289a2794e401d0fdb6/diskcache-5.6.3.tar.gz", hash = "sha256:2c3a3fa2743d8535d832ec61c2054a1641f41775aa7c556758a109941e33e4fc", size = 67916, upload-time = "2023-08-31T06:12:00.316Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/27/4570e78fc0bf5ea0ca45eb1de3818a23787af9b390c0b0a0033a1b8236f9/diskcache-5.6.3-py3-none-any.whl", hash = "sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19", size = 45550, upload-time = "2023-08-31T06:11:58.822Z" },
+]
+
+[[package]]
 name = "dukaan-saathi"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "gradio" },
+    { name = "huggingface-hub" },
+    { name = "llama-cpp-python", extra = ["server"] },
     { name = "modal" },
     { name = "pandas" },
     { name = "pillow" },
     { name = "pytest" },
     { name = "requests" },
+    { name = "smolagents" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "gradio", specifier = "==6.16.0" },
+    { name = "huggingface-hub", specifier = ">=0.25.0" },
+    { name = "llama-cpp-python", extras = ["server"], specifier = ">=0.3.0" },
     { name = "modal", specifier = ">=1.0.0" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "pytest" },
     { name = "requests", specifier = ">=2.34.2" },
+    { name = "smolagents", specifier = ">=1.0" },
 ]
 
 [[package]]
@@ -477,11 +492,11 @@ wheels = [
 
 [[package]]
 name = "fsspec"
-version = "2026.4.0"
+version = "2025.9.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d5/8d/1c51c094345df128ca4a990d633fe1a0ff28726c9e6b3c41ba65087bba1d/fsspec-2026.4.0.tar.gz", hash = "sha256:301d8ac70ae90ef3ad05dcf94d6c3754a097f9b5fe4667d2787aa359ec7df7e4", size = 312760, upload-time = "2026-04-29T20:42:38.635Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/e0/bab50af11c2d75c9c4a2a26a5254573c0bd97cea152254401510950486fa/fsspec-2025.9.0.tar.gz", hash = "sha256:19fd429483d25d28b65ec68f9f4adc16c17ea2c7c7bf54ec61360d478fb19c19", size = 304847, upload-time = "2025-09-02T19:10:49.215Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/0c/043d5e551459da400957a1395e0febbf771446ff34291afcbe3d8be2a279/fsspec-2026.4.0-py3-none-any.whl", hash = "sha256:11ef7bb35dab8a394fde6e608221d5cf3e8499401c249bebaeaad760a1a8dec2", size = 203402, upload-time = "2026-04-29T20:42:36.842Z" },
+    { url = "https://files.pythonhosted.org/packages/47/71/70db47e4f6ce3e5c37a607355f80da8860a33226be640226ac52cb05ef2e/fsspec-2025.9.0-py3-none-any.whl", hash = "sha256:530dc2a2af60a414a832059574df4a6e10cce927f6f4a78209390fe38955cfb7", size = 199289, upload-time = "2025-09-02T19:10:47.708Z" },
 ]
 
 [[package]]
@@ -723,6 +738,28 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
+]
+
+[[package]]
+name = "llama-cpp-python"
+version = "0.3.28"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "diskcache" },
+    { name = "jinja2" },
+    { name = "numpy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/83/c1/ac90e90d28f405009a89f08a5727d3f0dac49309575fb2d1a5ff1d265826/llama_cpp_python-0.3.28.tar.gz", hash = "sha256:958227b394f413425d6039952096daa0b8b98328c6b99d652862aec775f1672d", size = 68296944, upload-time = "2026-06-07T23:54:28.292Z" }
+
+[package.optional-dependencies]
+server = [
+    { name = "fastapi" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "sse-starlette" },
+    { name = "starlette-context" },
+    { name = "uvicorn" },
 ]
 
 [[package]]
@@ -1275,6 +1312,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-settings"
+version = "2.14.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/07/60/1d1e59c9c90d54591469ada7d268251f71c24bdb765f1a8a832cee8c6653/pydantic_settings-2.14.1.tar.gz", hash = "sha256:e874d3bec7e787b0c9958277956ed9b4dd5de6a80e162188fdaff7c5e26fd5fa", size = 235551, upload-time = "2026-05-08T13:40:06.542Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/8d/f1af3832f5e6eb13ba94ee809e72b8ecb5eef226d27ee0bef7d963d943c7/pydantic_settings-2.14.1-py3-none-any.whl", hash = "sha256:6e3c7edfd8277687cdc598f56e5cff0e9bfff0910a3749deaa8d4401c3a2b9de", size = 60964, upload-time = "2026-05-08T13:40:04.958Z" },
+]
+
+[[package]]
 name = "pydub"
 version = "0.25.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1318,6 +1369,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
+]
+
+[[package]]
+name = "python-dotenv"
+version = "1.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3", size = 50135, upload-time = "2026-03-01T16:00:26.196Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/d7/1959b9648791274998a9c3526f6d0ec8fd2233e4d4acce81bbae76b44b2a/python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a", size = 22101, upload-time = "2026-03-01T16:00:25.09Z" },
 ]
 
 [[package]]
@@ -1442,6 +1502,36 @@ wheels = [
 ]
 
 [[package]]
+name = "smolagents"
+version = "1.26.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "jinja2" },
+    { name = "pillow" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bd/85/3ca67bb57743434ac321821ea54cbdbf0d3dcc8d55f37199709e83141340/smolagents-1.26.0.tar.gz", hash = "sha256:4ec92313265f9cfbcabfc88e192b4bc4505f8475dc5f33dc872062fc567037bd", size = 239034, upload-time = "2026-05-29T05:08:44.732Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/8c/72bd5edc13288e3f27d4d9c1ef65adc0a68c950ee1fc6d3be270e1110f6c/smolagents-1.26.0-py3-none-any.whl", hash = "sha256:70e1cfb1576f782da93190ee31d9bb2659e5ca4bd84fda0c412e1f20498f28b6", size = 161466, upload-time = "2026-05-29T05:08:43.28Z" },
+]
+
+[[package]]
+name = "sse-starlette"
+version = "3.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "starlette" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f7/2b/58abc2d1fd397e7dde08e947e05c884d8ef2f78d5e2588c17a12d42d6994/sse_starlette-3.4.4.tar.gz", hash = "sha256:07e0fa0460138baf25cdd5fb28683472c3995dc1642225191b3832d62526bcb0", size = 31819, upload-time = "2026-05-12T17:37:17.019Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/67/805710444ea8cc75fbf70b920ed431a560c4bf9c57f7d5a3117213189399/sse_starlette-3.4.4-py3-none-any.whl", hash = "sha256:3f4dd50d8aed2771a091f3a83000323fc3844541c16b4fe585ae2420cc6df973", size = 16514, upload-time = "2026-05-12T17:37:15.601Z" },
+]
+
+[[package]]
 name = "starlette"
 version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1451,6 +1541,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/25/44/ec35f1b6e83094b997da438a02c8c9b0ade2b1e84cfc48bd4656780760a6/starlette-1.2.1.tar.gz", hash = "sha256:9b9b5ebb992e67d6093741e63c2f59e4f6fff986f81163c087867bd7b924b3f6", size = 2701854, upload-time = "2026-05-31T01:07:51.847Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/54/196d0c1db10af76baa4f64894448505d60d3cdf70ef92cbb35f46a4e4c71/starlette-1.2.1-py3-none-any.whl", hash = "sha256:4de0082d08c8f6764a85a54cf1120d6939507a19905c7768acad2a9f875d2b89", size = 73350, upload-time = "2026-05-31T01:07:50.09Z" },
+]
+
+[[package]]
+name = "starlette-context"
+version = "0.3.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "starlette" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a8/21/aa5d3848fcb77f0e7c9f1844271826ff74d83fad9920ca7f8105e0dc02ee/starlette_context-0.3.6.tar.gz", hash = "sha256:d361a36ba2d4acca3ab680f917b25e281533d725374752d47607a859041958cb", size = 9621, upload-time = "2023-02-16T22:16:51.966Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/56/a56af8066d9c17696207ee15bad43fd06dafc5917f6e7c7c3899427f6fc3/starlette_context-0.3.6-py3-none-any.whl", hash = "sha256:b14ce373fbb6895a2182a7104b9f63ba20c8db83444005fb9a844dd77ad9895c", size = 12386, upload-time = "2023-02-16T22:16:50.219Z" },
 ]
 
 [[package]]

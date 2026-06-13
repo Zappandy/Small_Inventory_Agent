@@ -1,7 +1,7 @@
 """
-download_models.py — download GGUF models from HF Hub into the models/ directory.
+download_models.py — download GGUF models from HF Hub into the local models/ directory.
 
-Called by startup.sh on first boot. Safe to re-run; skips files that already exist.
+Safe to re-run; skips files that already exist.
 
 Required env vars:
     HF_RECEIPT_MODEL_REPO — HF Hub model repo containing the fine-tuned GGUF
@@ -13,7 +13,7 @@ import os
 import shutil
 from pathlib import Path
 
-MODEL_DIR = Path(os.getenv("MODEL_DIR", str(Path.home() / "models")))
+MODEL_DIR = Path(os.getenv("MODEL_DIR", "models"))
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 ORCHESTRATOR_PATH = MODEL_DIR / "llama-3.2-3b-instruct.Q4_K_M.gguf"

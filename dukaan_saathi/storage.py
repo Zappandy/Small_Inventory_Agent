@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import sqlite3
 import uuid
 from difflib import get_close_matches
@@ -265,6 +266,16 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def db_conn():
+    conn = get_conn()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     return dict(row) if row is not None else None
 
@@ -280,7 +291,7 @@ def init_db(seed_demo_data: bool = True) -> None:
     seed_demo_data=True is for the hackathon MVP.
     Later, we can set this false and load catalog/supplier data from user files.
     """
-    with get_conn() as conn:
+    with db_conn() as conn:
         conn.executescript(SCHEMA_SQL)
 
     if seed_demo_data:
@@ -291,7 +302,7 @@ def seed_database() -> None:
     """
     Insert demo suppliers, products, aliases, and initial stock exactly once.
     """
-    with get_conn() as conn:
+    with db_conn() as conn:
         for supplier in DEMO_SUPPLIERS:
             conn.execute(
                 """
@@ -389,7 +400,7 @@ def get_inventory() -> list[dict[str, Any]]:
     """
     Return inventory rows for the UI.
     """
-    with get_conn() as conn:
+    with db_conn() as conn:
         rows = conn.execute(
             """
             SELECT
@@ -424,7 +435,7 @@ def get_inventory() -> list[dict[str, Any]]:
 
 
 def get_product(product_id: str) -> dict[str, Any] | None:
-    with get_conn() as conn:
+    with db_conn() as conn:
         row = conn.execute(
             """
             SELECT
@@ -451,7 +462,7 @@ def get_product(product_id: str) -> dict[str, Any] | None:
 def get_supplier_by_name(name: str) -> dict[str, Any] | None:
     name_norm = normalize_text(name)
 
-    with get_conn() as conn:
+    with db_conn() as conn:
         rows = conn.execute("SELECT * FROM suppliers").fetchall()
 
     for row in rows:
@@ -463,7 +474,7 @@ def get_supplier_by_name(name: str) -> dict[str, Any] | None:
 
 
 def get_current_stock(product_id: str) -> int:
-    with get_conn() as conn:
+    with db_conn() as conn:
         row = conn.execute(
             """
             SELECT current_stock
@@ -508,7 +519,7 @@ def find_product(query: str) -> dict[str, Any] | None:
     if not query_norm:
         return None
 
-    with get_conn() as conn:
+    with db_conn() as conn:
         alias_rows = conn.execute(
             """
             SELECT product_id, alias, alias_norm
@@ -614,7 +625,7 @@ def apply_stock_delta(
     new_stock = max(previous_stock + requested_delta, 0)
     safe_delta = new_stock - previous_stock
 
-    with get_conn() as conn:
+    with db_conn() as conn:
         conn.execute(
             """
             INSERT INTO stock_ledger
@@ -697,7 +708,7 @@ def create_product(
     """
     aliases = aliases or []
 
-    with get_conn() as conn:
+    with db_conn() as conn:
         conn.execute(
             """
             INSERT OR REPLACE INTO products
@@ -742,7 +753,7 @@ def create_supplier(
     """
     Small helper for later when the UI needs to add suppliers.
     """
-    with get_conn() as conn:
+    with db_conn() as conn:
         conn.execute(
             """
             INSERT OR REPLACE INTO suppliers
