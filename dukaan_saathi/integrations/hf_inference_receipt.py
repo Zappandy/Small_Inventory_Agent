@@ -70,7 +70,9 @@ def parse_receipt_via_hf_inference(raw_text: str) -> tuple[list[dict[str, Any]],
     trace: list[str] = [f"[hf_inference] Calling {model_repo} via HF Inference API"]
 
     prompt = INSTRUCTION_TEMPLATE.format(system=SYSTEM_PROMPT, input=raw_text)
-    client = InferenceClient(token=os.getenv("HF_TOKEN", "") or None)
+    # token is only needed for private models; if the repo is public, omit it
+    token = os.getenv("HF_TOKEN", "").strip() or None
+    client = InferenceClient(token=token)
 
     response_text = client.text_generation(
         prompt,
