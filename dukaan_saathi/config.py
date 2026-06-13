@@ -11,8 +11,9 @@ SAMPLES_DIR = Path("samples")
 # - "llamacpp" uses local llama.cpp servers.
 # - "modal_llm" uses a Modal-hosted receipt parser endpoint.
 # - "deterministic" uses the rule-based Python parser.
-# RECEIPT_BACKEND = os.getenv("RECEIPT_BACKEND", "llamacpp")  # local llama.cpp fallback
-RECEIPT_BACKEND = os.getenv("RECEIPT_BACKEND", "modal_llm")
+# RECEIPT_BACKEND = os.getenv("RECEIPT_BACKEND", "llamacpp")   # local llama.cpp fallback
+# RECEIPT_BACKEND = os.getenv("RECEIPT_BACKEND", "modal_llm")  # Modal-hosted endpoint fallback
+RECEIPT_BACKEND = os.getenv("RECEIPT_BACKEND", "hf_inference")
 
 # Base URL for the local llama.cpp HTTP servers (OpenAI-compatible).
 LLAMACPP_HOST = os.getenv("LLAMACPP_HOST", "http://localhost")

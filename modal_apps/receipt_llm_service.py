@@ -267,6 +267,54 @@ def api():
     return web_app
 
 
+@app.function(
+    image=image,
+    gpu="T4",
+    timeout=60 * 30,
+    volumes={
+        "/model_cache": model_cache,
+        "/adapters": adapter_volume,
+    },
+)
+def push_adapter_to_hub(hf_repo_id: str, hf_token: str) -> dict:
+    """
+    Merge the LoRA adapter into the base model and push the full model to HF Hub.
+    Run once after fine-tuning to make the model available for HF Inference API.
+
+    Usage:
+        modal run modal_apps/receipt_llm_service.py::push \
+            --hf-repo-id summerdevlin46/dukaan-saathi-receipt-lora \
+            --hf-token hf_...
+    """
+    from huggingface_hub import HfApi, create_repo
+    from unsloth import FastLanguageModel
+
+    if not (ADAPTER_DIR / "adapter_config.json").exists():
+        return {"ok": False, "error": "Adapter not found in volume. Run fine-tuning first."}
+
+    # Load base model first, then the adapter on top — same way the training saved it
+    print(f"Loading base model: {BASE_MODEL}")
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=BASE_MODEL,
+        max_seq_length=2048,
+        dtype=None,
+        load_in_4bit=True,
+    )
+    print(f"Loading LoRA adapter from Modal Volume: {ADAPTER_DIR}")
+    from peft import PeftModel
+    model = PeftModel.from_pretrained(model, str(ADAPTER_DIR))
+
+    print(f"Pushing merged model to Hub: {hf_repo_id}")
+    create_repo(hf_repo_id, repo_type="model", exist_ok=True, token=hf_token)
+    # push_to_hub_merged produces a standalone model InferenceClient can serve —
+    # push_to_hub alone would only upload the adapter weights
+    model.push_to_hub_merged(hf_repo_id, tokenizer, token=hf_token)
+
+    model_url = f"https://huggingface.co/{hf_repo_id}"
+    print(f"Done: {model_url}")
+    return {"ok": True, "hf_repo_id": hf_repo_id, "url": model_url}
+
+
 @app.local_entrypoint()
 def train(
     dataset_path: str = "data/finetune/receipt_examples.jsonl",
@@ -279,4 +327,10 @@ def train(
         max_steps=max_steps,
         num_train_epochs=num_train_epochs,
     )
+    print(json.dumps(result, indent=2))
+
+
+@app.local_entrypoint()
+def push(hf_repo_id: str, hf_token: str):
+    result = push_adapter_to_hub.remote(hf_repo_id=hf_repo_id, hf_token=hf_token)
     print(json.dumps(result, indent=2))
