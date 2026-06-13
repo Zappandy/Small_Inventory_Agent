@@ -267,32 +267,121 @@ def api():
     return web_app
 
 
+MODEL_CARD = """---
+language:
+- en
+- te
+license: mit
+base_model: unsloth/Llama-3.2-3B-Instruct-bnb-4bit
+tags:
+- receipt-parsing
+- kirana
+- inventory
+- fine-tuned
+- lora
+- indian-retail
+pipeline_tag: text-generation
+---
+
+# Dukaan Saathi — Receipt Parser (Llama-3.2-3B fine-tune)
+
+Fine-tuned **Llama-3.2-3B-Instruct** for structured receipt parsing in Indian kirana (convenience) store workflows.
+
+Part of the [Dukaan Saathi](https://huggingface.co/spaces/summerdevlin46/dukaan-saathi) inventory copilot demo.
+
+## What it does
+
+Takes noisy supplier receipt OCR text and returns a structured JSON object with line items, quantities, prices, and supplier info. Designed for messy real-world receipts: handwritten bills, printed tax invoices, informal tally notes.
+
+## Training data
+
+- 6 hand-authored examples from real kirana receipt formats
+- 22 Modal LLM-generated synthetic examples augmenting edge cases
+- Total: 28 examples; training focuses on format consistency over broad generalisation
+
+## Example
+
+**Input:**
+```
+MAHALAKSHMI MARKETING
+No. 2816  Date: 27/5/26
+Parle  1 X 2450 = 2450
+Bingo(C)  4 X 870 = 3480
+Subtotal 5930  Discount 612  Total 6542
+```
+
+**Output:**
+```json
+{
+  "supplier": "Mahalakshmi Marketing",
+  "invoice_no": "2816",
+  "date": "2026-05-27",
+  "items": [
+    {"product_raw": "Parle", "qty_cases": 1, "qty_units": 1, "unit_cost": 2450.0, "total": 2450.0},
+    {"product_raw": "Bingo(C)", "qty_cases": 4, "qty_units": 4, "unit_cost": 870.0, "total": 3480.0}
+  ],
+  "subtotal": 5930.0,
+  "discount": 612.0,
+  "gst": 0.0,
+  "net_total": 6542.0
+}
+```
+
+## Inference
+
+```python
+from huggingface_hub import InferenceClient
+
+client = InferenceClient()
+prompt = \"\"\"### Instruction:
+You are a receipt parser for an Indian convenience store. Extract all line items. Return ONLY valid JSON, no markdown.
+
+### Input:
+<paste receipt text here>
+
+### Response:
+\"\"\"
+result = client.text_generation(prompt, model="summerdevlin46/dukaan-saathi-receipt-lora", max_new_tokens=768)
+```
+
+## Limitations
+
+- Small training set; overfits to known receipt styles (Mahalakshmi Marketing, Sri Venkateshwara Marketing, Brundavan Buns)
+- Owner approval gate always required before any inventory write
+- Not a general-purpose receipt parser
+"""
+
+
 @app.function(
     image=image,
     gpu="T4",
     timeout=60 * 30,
+    secrets=[modal.Secret.from_dotenv()],
     volumes={
         "/model_cache": model_cache,
         "/adapters": adapter_volume,
     },
 )
-def push_adapter_to_hub(hf_repo_id: str, hf_token: str) -> dict:
+def push_adapter_to_hub() -> dict:
     """
     Merge the LoRA adapter into the base model and push the full model to HF Hub.
+    Reads HF_TOKEN and HF_RECEIPT_MODEL_REPO from environment (set in .env).
     Run once after fine-tuning to make the model available for HF Inference API.
 
     Usage:
-        modal run modal_apps/receipt_llm_service.py::push \
-            --hf-repo-id summerdevlin46/dukaan-saathi-receipt-lora \
-            --hf-token hf_...
+        modal run modal_apps/receipt_llm_service.py::push
     """
-    from huggingface_hub import HfApi, create_repo
+    import os
+    from huggingface_hub import create_repo, HfApi
     from unsloth import FastLanguageModel
+    from peft import PeftModel
+
+    hf_token = os.environ["HF_TOKEN"]
+    hf_repo_id = os.environ["HF_RECEIPT_MODEL_REPO"]
 
     if not (ADAPTER_DIR / "adapter_config.json").exists():
         return {"ok": False, "error": "Adapter not found in volume. Run fine-tuning first."}
 
-    # Load base model first, then the adapter on top — same way the training saved it
     print(f"Loading base model: {BASE_MODEL}")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=BASE_MODEL,
@@ -301,7 +390,6 @@ def push_adapter_to_hub(hf_repo_id: str, hf_token: str) -> dict:
         load_in_4bit=True,
     )
     print(f"Loading LoRA adapter from Modal Volume: {ADAPTER_DIR}")
-    from peft import PeftModel
     model = PeftModel.from_pretrained(model, str(ADAPTER_DIR))
 
     print(f"Pushing merged model to Hub: {hf_repo_id}")
@@ -309,6 +397,13 @@ def push_adapter_to_hub(hf_repo_id: str, hf_token: str) -> dict:
     # push_to_hub_merged produces a standalone model InferenceClient can serve —
     # push_to_hub alone would only upload the adapter weights
     model.push_to_hub_merged(hf_repo_id, tokenizer, token=hf_token)
+
+    HfApi(token=hf_token).upload_file(
+        path_or_fileobj=MODEL_CARD.encode(),
+        path_in_repo="README.md",
+        repo_id=hf_repo_id,
+        repo_type="model",
+    )
 
     model_url = f"https://huggingface.co/{hf_repo_id}"
     print(f"Done: {model_url}")
@@ -331,6 +426,7 @@ def train(
 
 
 @app.local_entrypoint()
-def push(hf_repo_id: str, hf_token: str):
-    result = push_adapter_to_hub.remote(hf_repo_id=hf_repo_id, hf_token=hf_token)
+def push():
+    """Push the trained adapter to HF Hub. Reads HF_TOKEN and HF_RECEIPT_MODEL_REPO from .env."""
+    result = push_adapter_to_hub.remote()
     print(json.dumps(result, indent=2))
