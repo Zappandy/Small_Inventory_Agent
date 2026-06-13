@@ -226,6 +226,8 @@ def build_demo() -> gr.Blocks:
 
     with gr.Blocks(
         title="Dukaan Saathi",
+        css=CUSTOM_CSS,
+        theme=THEME,
     ) as demo:
         pending_action = gr.State(None)
 
