@@ -374,7 +374,6 @@ def push_adapter_to_hub() -> dict:
     import os
     from huggingface_hub import create_repo, HfApi
     from unsloth import FastLanguageModel
-    from peft import PeftModel
 
     hf_token = os.environ["HF_TOKEN"]
     hf_repo_id = os.environ["HF_RECEIPT_MODEL_REPO"]
@@ -382,21 +381,25 @@ def push_adapter_to_hub() -> dict:
     if not (ADAPTER_DIR / "adapter_config.json").exists():
         return {"ok": False, "error": "Adapter not found in volume. Run fine-tuning first."}
 
-    print(f"Loading base model: {BASE_MODEL}")
+    # Load adapter path directly — unsloth resolves base model + adapter together.
+    # fp16 (load_in_4bit=False) is required for a clean merge; 4-bit quantized
+    # weights can't be merged into a standalone HF Hub model.
+    print(f"Loading base model + LoRA adapter (fp16) from {ADAPTER_DIR}")
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=BASE_MODEL,
+        model_name=str(ADAPTER_DIR),
         max_seq_length=2048,
         dtype=None,
-        load_in_4bit=True,
+        load_in_4bit=False,
     )
-    print(f"Loading LoRA adapter from Modal Volume: {ADAPTER_DIR}")
-    model = PeftModel.from_pretrained(model, str(ADAPTER_DIR))
 
     print(f"Pushing merged model to Hub: {hf_repo_id}")
     create_repo(hf_repo_id, repo_type="model", exist_ok=True, token=hf_token)
-    # push_to_hub_merged produces a standalone model InferenceClient can serve —
-    # push_to_hub alone would only upload the adapter weights
-    model.push_to_hub_merged(hf_repo_id, tokenizer, token=hf_token)
+    model.push_to_hub_merged(
+        hf_repo_id,
+        tokenizer,
+        save_method="merged_16bit",
+        token=hf_token,
+    )
 
     HfApi(token=hf_token).upload_file(
         path_or_fileobj=MODEL_CARD.encode(),
