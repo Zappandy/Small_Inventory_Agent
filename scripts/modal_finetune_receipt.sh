@@ -48,7 +48,8 @@ while [[ $# -gt 0 ]]; do
 Usage: scripts/modal_finetune_receipt.sh [--dataset path] [--modal-synthetic-count 0] [--max-steps 30] [--epochs 8]
 
 Runs receipt LoRA fine-tuning on Modal and stores the adapter in a Modal Volume.
-This avoids making Hugging Face Hub the mandatory artifact store.
+For the public HF Space path, run receipt_llm_service.py::push after training
+to merge the adapter and publish the model to Hugging Face Hub.
 Use --modal-synthetic-count to generate LLM-augmented examples on Modal before training.
 Use --synthetic-count only for deterministic template/debug examples.
 EOF

@@ -164,6 +164,27 @@ footer { display: none !important; }
     color: var(--kirana-text);
 }
 
+.nav-button button {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    border: 0 !important;
+    border-radius: 9px !important;
+    background: transparent !important;
+    color: var(--kirana-text) !important;
+    box-shadow: none !important;
+    padding: 12px 12px !important;
+    font-weight: 750 !important;
+    text-align: left !important;
+}
+
+.nav-button button:hover {
+    background: rgba(244, 166, 42, 0.12) !important;
+}
+
+.nav-button-primary button {
+    background: rgba(244, 166, 42, 0.14) !important;
+}
+
 .nav-item.active {
     background: rgba(244, 166, 42, 0.14);
 }
@@ -344,6 +365,14 @@ button:not(.selected) {
     margin: 8px 0 16px;
 }
 
+.route-note {
+    border: 1px solid var(--kirana-line);
+    background: rgba(220, 246, 229, 0.05);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 12px;
+}
+
 @media (max-width: 900px) {
     .app-shell {
         display: block !important;
@@ -416,7 +445,27 @@ def empty_reorder_df() -> pd.DataFrame:
     return pd.DataFrame(columns=REORDER_COLUMNS)
 
 
-def sidebar_html() -> str:
+def dashboard_stats() -> dict[str, int | float]:
+    inventory = get_inventory()
+    low_stock = [
+        row
+        for row in inventory
+        if int(row["current_stock"]) <= int(row["reorder_threshold"])
+    ]
+    estimated_reorder_value = sum(
+        max(int(row["target_stock"]) - int(row["current_stock"]), 0)
+        * float(row.get("last_unit_cost") or 0)
+        for row in low_stock
+    )
+    return {
+        "total_items": len(inventory),
+        "low_stock_count": len(low_stock),
+        "out_count": sum(1 for row in inventory if row.get("status") == "OUT"),
+        "estimated_reorder_value": round(estimated_reorder_value, 2),
+    }
+
+
+def sidebar_brand_html() -> str:
     return """
     <aside>
         <div class="brand-lockup">
@@ -427,13 +476,13 @@ def sidebar_html() -> str:
             </div>
         </div>
         <div class="sidebar-label">Workspace</div>
-        <div class="nav-item active"><span>Overview</span><span class="nav-count">14</span></div>
-        <div class="nav-item"><span>Inventory</span></div>
-        <div class="nav-item"><span>Add Product</span></div>
-        <div class="nav-item"><span>Orders</span><span class="nav-count">565</span></div>
-        <div class="nav-item"><span>Analytics</span></div>
-        <div class="nav-item"><span>Seasonal</span></div>
-        <div class="nav-item"><span>Settings</span></div>
+    </aside>
+    """
+
+
+def sidebar_footer_html() -> str:
+    return """
+    <aside>
         <div class="sidebar-footer">
             <div class="sidebar-status"><span class="status-dot"></span>Vision offline</div>
             <div>Andhra Pradesh · runs locally</div>
@@ -442,7 +491,12 @@ def sidebar_html() -> str:
     """
 
 
+def select_tab(tab_id: str):
+    return gr.update(selected=tab_id)
+
+
 def dashboard_header_html() -> str:
+    stats = dashboard_stats()
     return f"""
     <section class="hero-bar">
         <div>
@@ -456,19 +510,19 @@ def dashboard_header_html() -> str:
     </section>
     <section class="metric-grid">
         <div class="metric-card">
-            <div class="metric-value">36</div>
+            <div class="metric-value">{stats["total_items"]}</div>
             <div class="metric-subtitle">items across all categories</div>
         </div>
         <div class="metric-card">
-            <div class="metric-value warn">14</div>
+            <div class="metric-value warn">{stats["low_stock_count"]}</div>
             <div class="metric-subtitle">need restocking</div>
         </div>
         <div class="metric-card">
-            <div class="metric-value danger">7</div>
-            <div class="metric-subtitle">expired, clear today</div>
+            <div class="metric-value danger">{stats["out_count"]}</div>
+            <div class="metric-subtitle">currently out of stock</div>
         </div>
         <div class="metric-card">
-            <div class="metric-value">Rs 27,449</div>
+            <div class="metric-value">Rs {stats["estimated_reorder_value"]:,.0f}</div>
             <div class="metric-subtitle">estimated replenishment value</div>
         </div>
     </section>
@@ -482,6 +536,11 @@ def _react_agent():
 
 
 def _parse_receipt_with_configured_backend(raw_text: str):
+    if config.RECEIPT_BACKEND == "hf_inference":
+        from dukaan_saathi.integrations.hf_inference_receipt import parse_receipt_via_hf_inference
+
+        return parse_receipt_via_hf_inference(raw_text)
+
     if config.RECEIPT_BACKEND == "modal_llm":
         from dukaan_saathi.integrations.modal_receipt_llm import parse_receipt_with_modal_llm
 
@@ -528,11 +587,19 @@ def handle_parse_receipt(image, raw_text: str):
         if not rows:
             raise ValueError("ReAct agent returned no receipt rows")
     except Exception as exc:
-        rows, trace_list = _parse_receipt_with_configured_backend(raw_text)
-        trace = "\n".join([
-            f"ReAct agent unavailable; using configured receipt backend ({config.RECEIPT_BACKEND}): {exc}",
-            *trace_list,
-        ])
+        try:
+            rows, trace_list = _parse_receipt_with_configured_backend(raw_text)
+            trace = "\n".join([
+                f"ReAct agent unavailable; using configured receipt backend ({config.RECEIPT_BACKEND}): {exc}",
+                *trace_list,
+            ])
+        except Exception as backend_exc:
+            rows, fallback_trace = parse_receipt_text(raw_text)
+            trace = "\n".join([
+                f"Configured receipt backend ({config.RECEIPT_BACKEND}) failed: {backend_exc}",
+                "Fallback parser produced editable rows; verify carefully before approval.",
+                *fallback_trace,
+            ])
     df = pd.DataFrame(rows, columns=RECEIPT_COLUMNS)
     return df, trace
 
@@ -580,23 +647,36 @@ def handle_draft_reorder():
 
 def build_demo() -> gr.Blocks:
     init_db()
+    stats = dashboard_stats()
 
     with gr.Blocks(
         title="Dukaan Saathi",
-        css=CUSTOM_CSS,
-        theme=THEME,
     ) as demo:
         pending_action = gr.State(None)
 
         with gr.Row(elem_classes=["app-shell"]):
             with gr.Column(elem_classes=["sidebar"]):
-                gr.HTML(sidebar_html())
+                gr.HTML(sidebar_brand_html())
+                nav_overview = gr.Button(
+                    f"Overview  {stats['low_stock_count']}",
+                    elem_classes=["nav-button", "nav-button-primary"],
+                )
+                nav_inventory = gr.Button("Inventory", elem_classes=["nav-button"])
+                nav_add_product = gr.Button("Add Product", elem_classes=["nav-button"])
+                nav_orders = gr.Button(
+                    f"Orders  {stats['low_stock_count']}",
+                    elem_classes=["nav-button"],
+                )
+                nav_analytics = gr.Button("Analytics", elem_classes=["nav-button"])
+                nav_seasonal = gr.Button("Seasonal", elem_classes=["nav-button"])
+                nav_settings = gr.Button("Settings", elem_classes=["nav-button"])
+                gr.HTML(sidebar_footer_html())
 
             with gr.Column(elem_classes=["main-surface"]):
                 gr.HTML(dashboard_header_html())
 
-                with gr.Tabs(elem_classes=["gradio-tabs"]):
-                    with gr.Tab(bi("Overview", "సారాంశం")):
+                with gr.Tabs(selected="overview", elem_classes=["gradio-tabs"]) as workspace_tabs:
+                    with gr.Tab(bi("Overview", "సారాంశం"), id="overview"):
                         with gr.Row():
                             with gr.Column(scale=3):
                                 gr.Markdown(
@@ -657,7 +737,7 @@ def build_demo() -> gr.Blocks:
                                 )
                                 overview_command_result = gr.Textbox(label=bi("Approval result", "ఫలితం"))
 
-                    with gr.Tab(bi("Inventory", "స్టాక్")):
+                    with gr.Tab(bi("Inventory", "స్టాక్"), id="inventory"):
                         gr.Markdown(
                             """
                             <div class="panel-heading">
@@ -676,7 +756,7 @@ def build_demo() -> gr.Blocks:
                         refresh_btn = gr.Button(bi("Refresh inventory", "స్టాక్ రిఫ్రెష్"))
                         refresh_btn.click(fn=inventory_df, outputs=inventory_table)
 
-                    with gr.Tab(bi("Stock command", "కమాండ్")):
+                    with gr.Tab(bi("Stock command", "కమాండ్"), id="stock-command"):
                         gr.Markdown(
                             """
                             <div class="panel-heading">
@@ -731,7 +811,7 @@ def build_demo() -> gr.Blocks:
                             outputs=[inventory_table, overview_command_result, overview_command_trace, pending_action],
                         )
 
-                    with gr.Tab(bi("Receipt import", "బిల్ ఇంపోర్ట్")):
+                    with gr.Tab(bi("Receipt import", "బిల్ ఇంపోర్ట్"), id="receipt-import"):
                         gr.Markdown(
                             """
                             <div class="panel-heading">
@@ -840,7 +920,7 @@ def build_demo() -> gr.Blocks:
                             outputs=[inventory_table, receipt_result, receipt_trace],
                         )
 
-                    with gr.Tab(bi("Reorder draft", "రీఆర్డర్")):
+                    with gr.Tab(bi("Reorder draft", "రీఆర్డర్"), id="reorder-draft"):
                         gr.Markdown(
                             """
                             <div class="panel-heading">
@@ -873,6 +953,114 @@ def build_demo() -> gr.Blocks:
                             outputs=[reorder_preview, overview_reorder_trace],
                         )
 
+                    with gr.Tab(bi("Add Product", "ఉత్పత్తి జోడించు"), id="add-product"):
+                        gr.Markdown(
+                            """
+                            <div class="panel-heading">
+                            <h2>Add Product</h2>
+                            <div class="panel-subtitle">Manual intake draft matching the demo flow. Saving is intentionally not wired yet.</div>
+                            </div>
+                            <div class="route-note">
+                            Product creation needs a service-layer write path before it can update inventory. That keeps the owner-approval rule intact.
+                            </div>
+                            """
+                        )
+                        with gr.Row():
+                            gr.Textbox(label="Product name", placeholder="Basmati Rice")
+                            gr.Textbox(label="Telugu name", placeholder="బాస్మతి బియ్యం")
+                        with gr.Row():
+                            gr.Textbox(label="Category", placeholder="Grains & Flour")
+                            gr.Textbox(label="Supplier", placeholder="Sri Lakshmi Traders")
+                        with gr.Row():
+                            gr.Number(label="On hand", value=0)
+                            gr.Textbox(label="Unit", placeholder="kg")
+                            gr.Number(label="Reorder threshold", value=5)
+
+                    with gr.Tab(bi("Orders", "ఆర్డర్లు"), id="orders"):
+                        gr.Markdown(
+                            """
+                            <div class="panel-heading">
+                            <h2>Orders</h2>
+                            <div class="panel-subtitle">Receipt import and reorder drafting are the active order workflows in this MVP.</div>
+                            </div>
+                            """
+                        )
+                        with gr.Row():
+                            orders_receipt_btn = gr.Button("Open receipt import", variant="primary")
+                            orders_reorder_btn = gr.Button("Open reorder draft")
+                        gr.Markdown(
+                            """
+                            <div class="route-note">
+                            The JPEG has a richer orders queue. In this codebase, receipt rows and reorder drafts are the concrete order-like workflows.
+                            </div>
+                            """
+                        )
+                        orders_receipt_btn.click(fn=lambda: select_tab("receipt-import"), outputs=workspace_tabs)
+                        orders_reorder_btn.click(fn=lambda: select_tab("reorder-draft"), outputs=workspace_tabs)
+
+                    with gr.Tab(bi("Analytics", "విశ్లేషణలు"), id="analytics"):
+                        gr.Markdown(
+                            """
+                            <div class="panel-heading">
+                            <h2>Analytics</h2>
+                            <div class="panel-subtitle">Operational signals from current inventory and reorder thresholds.</div>
+                            </div>
+                            """
+                        )
+                        analytics_reorder = gr.Dataframe(
+                            value=empty_reorder_df,
+                            headers=REORDER_COLUMNS,
+                            interactive=False,
+                            wrap=True,
+                            label="Low-stock analysis",
+                        )
+                        analytics_refresh = gr.Button("Refresh low-stock analysis", variant="primary")
+                        analytics_trace = gr.Textbox(label="Analysis trace", lines=6, elem_classes=["trace-box"])
+                        analytics_refresh.click(
+                            fn=handle_draft_reorder,
+                            outputs=[analytics_reorder, analytics_trace],
+                        )
+
+                    with gr.Tab(bi("Seasonal", "సీజనల్"), id="seasonal"):
+                        gr.Markdown(
+                            """
+                            <div class="panel-heading">
+                            <h2>Seasonal</h2>
+                            <div class="panel-subtitle">Festival demand planning shell from the design reference.</div>
+                            </div>
+                            <div class="route-note">
+                            Bonalu demand planning is visual-only for now. It should be backed by a real seasonal forecast service before it proposes stock changes.
+                            </div>
+                            """
+                        )
+
+                    with gr.Tab(bi("Settings", "సెట్టింగ్స్"), id="settings"):
+                        gr.Markdown(
+                            f"""
+                            <div class="panel-heading">
+                            <h2>Settings</h2>
+                            <div class="panel-subtitle">Runtime configuration for the local demo.</div>
+                            </div>
+                            <div class="route-note">
+                            Receipt backend: <code>{config.RECEIPT_BACKEND}</code><br>
+                            Inventory writes still require owner approval and go through the inventory service.
+                            </div>
+                            """
+                        )
+
                 demo.load(fn=inventory_df, outputs=inventory_table)
+
+                nav_overview.click(fn=lambda: select_tab("overview"), outputs=workspace_tabs)
+                nav_inventory.click(fn=lambda: select_tab("inventory"), outputs=workspace_tabs)
+                nav_add_product.click(fn=lambda: select_tab("add-product"), outputs=workspace_tabs)
+                nav_orders.click(fn=lambda: select_tab("orders"), outputs=workspace_tabs)
+                nav_analytics.click(fn=lambda: select_tab("analytics"), outputs=workspace_tabs)
+                nav_seasonal.click(fn=lambda: select_tab("seasonal"), outputs=workspace_tabs)
+                nav_settings.click(fn=lambda: select_tab("settings"), outputs=workspace_tabs)
+
+        # Gradio 6 moved css/theme to launch(), but hosted Gradio runtimes often
+        # launch the exported Blocks object themselves. Keep the exported demo styled.
+        demo._deprecated_css = CUSTOM_CSS
+        demo._deprecated_theme = THEME
 
     return demo

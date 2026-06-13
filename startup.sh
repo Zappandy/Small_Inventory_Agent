@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # HF Space startup hook — runs before app.py.
 #
-# The default backend is modal_llm (fine-tuned LoRA via Modal endpoint).
+# The default backend is hf_inference (fine-tuned model via HF Inference API).
 # No local model servers are needed on HF Spaces.
 #
 # Local dev with llama.cpp:
@@ -13,4 +13,4 @@ set -euo pipefail
 
 source scripts/_env.sh
 
-echo "Startup complete. Using RECEIPT_BACKEND=${RECEIPT_BACKEND:-modal_llm}"
+echo "Startup complete. Using RECEIPT_BACKEND=${RECEIPT_BACKEND:-hf_inference}"

@@ -34,9 +34,31 @@ Adapter path inside Modal: /adapters/receipt-lora
 Base model: unsloth/Llama-3.2-3B-Instruct-bnb-4bit
 ```
 
-This is not a local GGUF artifact. Run inference through the Modal endpoint.
+This is not a local GGUF artifact. It can be served directly through the Modal
+endpoint, or merged and pushed to Hugging Face Hub for the public HF Space
+`hf_inference` runtime.
 
-## Inference Endpoint
+Push the trained adapter to Hugging Face Hub with:
+
+```bash
+uv run modal run modal_apps/receipt_llm_service.py::push
+```
+
+That push reads `HF_TOKEN` and `HF_RECEIPT_MODEL_REPO` from `.env`.
+
+## Public HF Inference Path
+
+The public HF Space should use:
+
+```text
+RECEIPT_BACKEND=hf_inference
+HF_RECEIPT_MODEL_REPO=summerdevlin46/dukaan-saathi-receipt-lora
+```
+
+The model in `HF_RECEIPT_MODEL_REPO` is still the Modal-trained receipt model;
+HF Inference is only the public runtime engine.
+
+## Modal Inference Endpoint
 
 `scripts/modal_deploy.sh modal_apps/receipt_llm_service.py` deployed the parser
 and wrote these values to `.env`:
@@ -126,4 +148,3 @@ The adapter is demo-oriented and trained on a tiny dataset. It improves format
 following for known receipt styles, but extracted fields can still be wrong.
 The app must keep using the editable table plus owner approval before inventory
 changes.
-

@@ -8,11 +8,10 @@ DATA_DIR = Path("data")
 SAMPLES_DIR = Path("samples")
 
 # Receipt parsing backend:
+# - "hf_inference" uses the fine-tuned model on Hugging Face Inference API.
 # - "llamacpp" uses local llama.cpp servers.
 # - "modal_llm" uses a Modal-hosted receipt parser endpoint.
 # - "deterministic" uses the rule-based Python parser.
-# RECEIPT_BACKEND = os.getenv("RECEIPT_BACKEND", "llamacpp")   # local llama.cpp fallback
-# RECEIPT_BACKEND = os.getenv("RECEIPT_BACKEND", "modal_llm")  # Modal-hosted endpoint fallback
 RECEIPT_BACKEND = os.getenv("RECEIPT_BACKEND", "hf_inference")
 
 # Base URL for the local llama.cpp HTTP servers (OpenAI-compatible).

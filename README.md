@@ -126,9 +126,25 @@ MiniCPM-V output
 
 This keeps the workflow useful even when the model makes mistakes.
 
-## Prepared demo artifacts
+## Model lifecycle
 
-These are the ingredients that must exist before running the probabilistic demo path.
+The receipt model is trained on Modal, then pushed to Hugging Face Hub for the
+public Space runtime.
+
+```text
+Modal synthetic data generation
+→ Modal LoRA fine-tuning
+→ LoRA adapter stored in a Modal Volume
+→ Modal push job merges adapter into the base model
+→ merged model pushed to Hugging Face Hub
+→ HF Space uses hf_inference to call that Hub model
+→ parsed receipt rows populate an editable table
+→ owner approval updates inventory
+```
+
+Modal is the training and optional serving environment. Hugging Face Hub is the
+public model artifact store. Hugging Face Inference is the public Space inference
+path.
 
 ### Fine-tuned receipt model
 
@@ -141,14 +157,35 @@ Adapter path: /adapters/receipt-lora
 Base model:   unsloth/Llama-3.2-3B-Instruct-bnb-4bit
 ```
 
-The adapter is served via the Modal receipt parser endpoint. The endpoint URL is
-written to `.env` after deployment:
+After training, push the merged model to Hugging Face Hub:
+
+```bash
+uv run modal run modal_apps/receipt_llm_service.py::push
+```
+
+That push reads these values from `.env`:
+
+```text
+HF_TOKEN=...
+HF_RECEIPT_MODEL_REPO=summerdevlin46/dukaan-saathi-receipt-lora
+```
+
+The public HF Space uses the pushed model through:
+
+```text
+RECEIPT_BACKEND=hf_inference
+HF_RECEIPT_MODEL_REPO=summerdevlin46/dukaan-saathi-receipt-lora
+```
+
+The same adapter can also be served directly through a Modal receipt parser
+endpoint for local or fallback runs. Deploying that endpoint writes this to
+`.env`:
 
 ```text
 MODAL_RECEIPT_LLM_ENDPOINT=https://summerdevlin46--dukaan-saathi-receipt-llm-api.modal.run/parse
 ```
 
-This is not a local GGUF file. Inference goes through the Modal endpoint.
+This is not a local GGUF file. Local llama.cpp use is a separate optional path.
 
 ### Training data
 
@@ -177,11 +214,18 @@ To redeploy the inference endpoint after retraining:
 scripts/modal_deploy.sh modal_apps/receipt_llm_service.py
 ```
 
+To update the public HF Space model after retraining, push again:
+
+```bash
+uv run modal run modal_apps/receipt_llm_service.py::push
+```
+
 ## Current stack
 
 * **Gradio / Hugging Face Space** for the demo UI
 * **Lean ReAct tool router** for selecting the small set of inventory/receipt tools
-* **llama.cpp + smolagents tools** for the default local model-backed receipt parser path
+* **HF Inference API** for the public Hugging Face Space receipt parser path, using the model fine-tuned on Modal and pushed to HF Hub
+* **llama.cpp + smolagents tools** for the local model-backed receipt parser path
 * **MiniCPM-V 4.6** for receipt image extraction
 * **Distil-Whisper small English** for correction-command speech transcription
 * **Modal** for hosting model endpoints
@@ -199,7 +243,8 @@ scripts/modal_deploy.sh modal_apps/receipt_llm_service.py
 Modal integrations are optional remote model services. The app-side Modal code
 stays as thin HTTP clients; model serving code lives in `modal_apps/`.
 
-For the hackathon demo, prefer the probabilistic llama.cpp path. The
+For the public Hugging Face Space, use `RECEIPT_BACKEND=hf_inference` with
+`HF_RECEIPT_MODEL_REPO` pointing at the published fine-tuned model. The
 deterministic parser path exists for smoke tests, offline debugging, and safety
 fallbacks; it is not the primary demo experience.
 
@@ -216,7 +261,14 @@ The local orchestrator is:
 scripts/dev.sh
 ```
 
-It selects one of three staged runtime paths:
+It selects one of four staged runtime paths:
+
+```text
+scripts/dev.sh --hf-inference
+→ scripts/run_app.sh --backend hf_inference
+  → uv run python app.py
+  → receipt text parsing calls the HF Inference API model in HF_RECEIPT_MODEL_REPO
+```
 
 ```text
 scripts/dev.sh --llamacpp
@@ -345,7 +397,36 @@ uv run python -m pytest smoke_tests/test_receipt_parser_regression.py -q
 uv run python -m pytest smoke_tests/test_receipt_correction.py -q
 ```
 
-### Recommended hackathon demo path
+### Recommended public HF Space path
+
+This is the public sharing path. It uses the fine-tuned model on Hugging Face
+via the HF Inference API.
+
+```bash
+scripts/dev.sh --hf-inference
+```
+
+Or directly:
+
+```bash
+scripts/run_app.sh --backend hf_inference
+```
+
+Set:
+
+```text
+HF_RECEIPT_MODEL_REPO=summerdevlin46/dukaan-saathi-receipt-lora
+```
+
+`HF_TOKEN` is only needed if the model repo is private.
+
+The default backend is:
+
+```text
+RECEIPT_BACKEND=hf_inference
+```
+
+### Modal-hosted receipt parser path
 
 This is the probabilistic path. It uses the fine-tuned LoRA adapter deployed on
 Modal (see [Prepared demo artifacts](#prepared-demo-artifacts)). Requires the
@@ -361,12 +442,6 @@ Or directly:
 scripts/run_app.sh --backend modal_llm
 ```
 
-The default backend is:
-
-```text
-RECEIPT_BACKEND=modal_llm
-```
-
 Open the local Gradio URL shown in the terminal, usually:
 
 ```text
@@ -376,7 +451,9 @@ http://127.0.0.1:7860
 ### Local llama.cpp path (fallback)
 
 Use this if the Modal endpoint is unavailable or you want a fully local run.
-Requires downloading the fine-tuned GGUF and starting two llama.cpp servers.
+Requires a GGUF-compatible model artifact and starts two llama.cpp servers. The
+HF Space model pushed by `receipt_llm_service.py::push` is a merged HF Hub model
+for HF Inference API, not automatically a GGUF.
 
 ```bash
 scripts/dev.sh --llamacpp
@@ -396,19 +473,10 @@ http://127.0.0.1:8080/v1  # agent orchestrator
 http://127.0.0.1:8082/v1  # receipt parser (fine-tuned)
 ```
 
-If `HF_RECEIPT_MODEL_REPO` is unset, the base Llama-3.2-3B model is used for
-the receipt parser port — quality will be lower than with the fine-tuned GGUF.
-
-### Modal-hosted receipt parser path
-
-The fine-tuned LoRA adapter is already trained and deployed (see
-[Prepared demo artifacts](#prepared-demo-artifacts)). To run against it:
-
-```bash
-scripts/dev.sh --modal-llm
-```
-
-This is now the default. Ensure `.env` contains `MODAL_RECEIPT_LLM_ENDPOINT`.
+If `HF_RECEIPT_GGUF_REPO` points to a repo with the expected GGUF file,
+`scripts/download_models.py` can use it for local llama.cpp. If it is unset or
+does not contain a GGUF, the local path falls back to the base model and receipt
+parsing quality will be lower than the fine-tuned HF Inference path.
 
 Limitations:
 

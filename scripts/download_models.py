@@ -4,9 +4,9 @@ download_models.py — download GGUF models from HF Hub into the local models/ d
 Safe to re-run; skips files that already exist.
 
 Required env vars:
-    HF_RECEIPT_MODEL_REPO — HF Hub model repo containing the fine-tuned GGUF
-                            e.g. "your-org/llama-3.2-3b-receipt-lora"
-                            If unset, falls back to copying the base model.
+    HF_RECEIPT_GGUF_REPO — optional HF Hub repo containing a fine-tuned GGUF
+                           for the local llama.cpp path. If unset, this script
+                           falls back to copying the base model.
 """
 
 import os
@@ -52,7 +52,7 @@ def download_receipt_model() -> None:
         print(f"Receipt model already present: {RECEIPT_PATH}")
         return
 
-    hf_repo = os.getenv("HF_RECEIPT_MODEL_REPO", "").strip()
+    hf_repo = os.getenv("HF_RECEIPT_GGUF_REPO", "").strip()
     if hf_repo:
         _hf_download(
             repo_id=hf_repo,
@@ -62,7 +62,7 @@ def download_receipt_model() -> None:
     else:
         if not ORCHESTRATOR_PATH.exists():
             download_orchestrator()
-        print("HF_RECEIPT_MODEL_REPO not set — copying base model as receipt model fallback")
+        print("HF_RECEIPT_GGUF_REPO not set — copying base model as receipt model fallback")
         shutil.copy2(str(ORCHESTRATOR_PATH), str(RECEIPT_PATH))
 
 

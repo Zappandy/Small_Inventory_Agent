@@ -7,9 +7,12 @@ the Gradio UI with React.
 
 ## Runtime Shape
 
-- Llama.cpp is the default local model stack.
-- Modal remains optional for remote model services, currently receipt image OCR
-  and speech transcription.
+- `hf_inference` is the default app backend for the public Hugging Face Space.
+  It calls the fine-tuned model after that model is trained on Modal, merged,
+  and pushed to Hugging Face Hub.
+- Modal remains optional for remote model services: receipt image OCR, speech
+  transcription, and an alternate hosted receipt parser endpoint.
+- Llama.cpp is an optional fully local model stack.
 - The Gradio app must only talk to Modal through thin HTTP clients in
   `dukaan_saathi/integrations/`.
 - Model output can propose updates or populate editable receipt rows, but stock
@@ -28,23 +31,27 @@ the Gradio UI with React.
 
 ## Model Services
 
-- Port 8080 serves the Llama-3.2-3B orchestrator.
-- Port 8082 serves the receipt parser model.
-- Model files live in repo-local `models/`, which is ignored by git.
 - Local app entrypoints are staged:
+  - `scripts/dev.sh --hf-inference` starts the app against HF Inference API.
+  - `scripts/dev.sh --modal-llm` starts the app against the Modal receipt parser endpoint.
   - `scripts/dev.sh --deterministic` starts the app without model servers.
   - `scripts/dev.sh --llamacpp` downloads/starts llama.cpp servers and then starts the app.
-  - `scripts/dev.sh --modal-llm` starts the app against the Modal receipt parser endpoint.
   - `scripts/start_llamacpp.sh` starts only the model servers.
-  - `scripts/run_app.sh --backend llamacpp|modal_llm|deterministic` starts only Gradio.
-- `RECEIPT_BACKEND=llamacpp` is the default. Set `RECEIPT_BACKEND=modal_llm`
-  to use the Modal-hosted parser or `RECEIPT_BACKEND=deterministic` to force
-  the rule-based parser.
-- `HF_RECEIPT_MODEL_REPO` should point to the published fine-tuned GGUF repo.
-  If unset, startup copies the base model for the receipt parser port.
+  - `scripts/run_app.sh --backend hf_inference|modal_llm|llamacpp|deterministic`
+    starts only Gradio.
+- `RECEIPT_BACKEND=hf_inference` is the default. Set
+  `RECEIPT_BACKEND=modal_llm` to use the Modal-hosted parser,
+  `RECEIPT_BACKEND=llamacpp` for local model servers, or
+  `RECEIPT_BACKEND=deterministic` to force the rule-based parser.
+- `HF_RECEIPT_MODEL_REPO` should point to the published fine-tuned HF Hub model
+  repo used by the HF Inference API.
+- For llama.cpp only, port 8080 serves the Llama-3.2-3B orchestrator and port
+  8082 serves the receipt parser model. Model files live in repo-local
+  `models/`, which is ignored by git.
 - `scripts/modal_finetune_receipt.sh` trains a LoRA adapter on Modal and stores
-  it in a Modal Volume, avoiding Hugging Face Hub as the mandatory artifact
-  store.
+  it in a Modal Volume.
+- `uv run modal run modal_apps/receipt_llm_service.py::push` merges that adapter
+  and pushes the model to Hugging Face Hub for `hf_inference`.
 - `scripts/modal_generate_receipt_examples.sh` uses a small instruct model on
   Modal to generate LLM-augmented receipt JSONL examples for fine-tuning.
 - `scripts/generate_receipt_examples.py` remains a deterministic template

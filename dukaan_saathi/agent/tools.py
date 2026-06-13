@@ -112,7 +112,7 @@ def extract_text_from_receipt_image(image_path: str) -> str:
 @tool
 def parse_receipt_text_tool(raw_text: str) -> str:
     """Parse OCR receipt text into structured line items. Uses the configured
-    receipt backend: local llama.cpp, Modal-hosted LLM, or deterministic parser.
+    receipt backend: HF Inference API, local llama.cpp, Modal-hosted LLM, or deterministic parser.
     Returns a JSON list of row dicts with fields: product_raw,
     matched_product_name, quantity, unit_price, total_price.
 
@@ -120,7 +120,10 @@ def parse_receipt_text_tool(raw_text: str) -> str:
         raw_text: Receipt OCR text or pasted receipt text to parse.
     """
     from dukaan_saathi import config
-    if config.RECEIPT_BACKEND == "llamacpp":
+    if config.RECEIPT_BACKEND == "hf_inference":
+        from dukaan_saathi.integrations.hf_inference_receipt import parse_receipt_via_hf_inference
+        rows, _ = parse_receipt_via_hf_inference(raw_text)
+    elif config.RECEIPT_BACKEND == "llamacpp":
         from dukaan_saathi.integrations.llamacpp_receipt import parse_receipt_via_llm
         rows, _ = parse_receipt_via_llm(raw_text)
     elif config.RECEIPT_BACKEND == "modal_llm":
