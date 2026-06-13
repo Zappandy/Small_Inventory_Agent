@@ -10,6 +10,8 @@ SYNTHETIC_COUNT="0"
 SYNTHETIC_SEED="7"
 MODAL_SYNTHETIC_COUNT="0"
 MODAL_SYNTHETIC_MODEL_ID="Qwen/Qwen2.5-1.5B-Instruct"
+RUN_ID="${TRACE_RUN_ID:-modal-finetune-$(date -u +%Y%m%dT%H%M%SZ)}"
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -61,7 +63,8 @@ done
 
 if [[ "$MODAL_SYNTHETIC_COUNT" != "0" ]]; then
   GENERATED_DATASET="$(mktemp -t dukaan-modal-receipt-examples.XXXXXX.jsonl)"
-  scripts/modal_generate_receipt_examples.sh \
+  SYNTHETIC_RUN_ID="${RUN_ID}-synthetic"
+  TRACE_RUN_ID="$SYNTHETIC_RUN_ID" scripts/modal_generate_receipt_examples.sh \
     --dataset "$DATASET_PATH" \
     --count "$MODAL_SYNTHETIC_COUNT" \
     --model-id "$MODAL_SYNTHETIC_MODEL_ID" \
@@ -79,7 +82,34 @@ if [[ "$SYNTHETIC_COUNT" != "0" ]]; then
   DATASET_PATH="$GENERATED_DATASET"
 fi
 
+METADATA_JSON=$(printf '{"base_model":"unsloth/Llama-3.2-3B-Instruct-bnb-4bit","adapter_volume":"dukaan-saathi-receipt-lora","adapter_dir":"/adapters/receipt-lora","max_steps":%s,"epochs":%s,"template_synthetic_count":%s,"modal_synthetic_count":%s,"modal_synthetic_model_id":"%s","modal_app":"dukaan-saathi-receipt-llm"}' \
+  "$MAX_STEPS" "$EPOCHS" "$SYNTHETIC_COUNT" "$MODAL_SYNTHETIC_COUNT" "$MODAL_SYNTHETIC_MODEL_ID")
+
+set +e
 uv run modal run modal_apps/receipt_llm_service.py::train \
   --dataset-path "$DATASET_PATH" \
   --max-steps "$MAX_STEPS" \
   --num-train-epochs "$EPOCHS"
+STATUS_CODE=$?
+set -e
+
+if [[ "$STATUS_CODE" -eq 0 ]]; then
+  uv run python scripts/record_run_manifest.py \
+    --run-id "$RUN_ID" \
+    --kind "modal-finetune" \
+    --status "succeeded" \
+    --started-at "$STARTED_AT" \
+    --input-file "$DATASET_PATH" \
+    --metadata-json "$METADATA_JSON"
+else
+  uv run python scripts/record_run_manifest.py \
+    --run-id "$RUN_ID" \
+    --kind "modal-finetune" \
+    --status "failed" \
+    --started-at "$STARTED_AT" \
+    --input-file "$DATASET_PATH" \
+    --metadata-json "$METADATA_JSON" \
+    --error "modal trainer exited with status $STATUS_CODE"
+fi
+
+exit "$STATUS_CODE"

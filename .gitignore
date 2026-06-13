@@ -9,7 +9,9 @@ __pycache__/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+config/
 models/
+data/runs/
 data/finetune/generated/
 *-receipt-lora/
 *.gguf

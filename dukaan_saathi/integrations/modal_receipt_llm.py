@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 from typing import Any
 
 import requests
@@ -12,6 +13,11 @@ from dukaan_saathi.parsers.receipt_text import (
     detect_supplier,
     parse_receipt_text,
 )
+from dukaan_saathi.traceability import new_run_id, utc_now_iso, write_manifest
+
+
+def _text_sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _extract_json_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -25,6 +31,8 @@ def _extract_json_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 def parse_receipt_with_modal_llm(raw_text: str) -> tuple[list[dict[str, Any]], list[str]]:
     trace: list[str] = ["[modal_llm] Calling Modal receipt parser endpoint"]
+    run_id = new_run_id("receipt-inference")
+    started_at = utc_now_iso()
     endpoint = (
         os.getenv("MODAL_RECEIPT_LLM_ENDPOINT")
         or os.getenv("MODAL_RECEIPT_PARSER_ENDPOINT")
@@ -33,8 +41,24 @@ def parse_receipt_with_modal_llm(raw_text: str) -> tuple[list[dict[str, Any]], l
 
     if not endpoint:
         rows, fallback_trace = parse_receipt_text(raw_text)
+        manifest_path = write_manifest({
+            "run_id": run_id,
+            "kind": "receipt-inference",
+            "status": "fallback",
+            "started_at": started_at,
+            "ended_at": utc_now_iso(),
+            "metadata": {
+                "backend": "modal_llm",
+                "fallback_backend": "deterministic",
+                "reason": "missing_endpoint",
+                "raw_text_sha256": _text_sha256(raw_text),
+                "raw_text_chars": len(raw_text),
+                "rows": len(rows),
+            },
+        })
         return rows, trace + [
             "[modal_llm] MODAL_RECEIPT_LLM_ENDPOINT is not set; using deterministic parser",
+            f"[trace] Wrote inference manifest: {manifest_path}",
             *fallback_trace,
         ]
 
@@ -67,12 +91,47 @@ def parse_receipt_with_modal_llm(raw_text: str) -> tuple[list[dict[str, Any]], l
         model = str(payload.get("model") or "unknown")
         latency = payload.get("latency_seconds")
         latency_note = f" in {latency:.2f}s" if isinstance(latency, int | float) else ""
+        manifest_path = write_manifest({
+            "run_id": run_id,
+            "kind": "receipt-inference",
+            "status": "succeeded",
+            "started_at": started_at,
+            "ended_at": utc_now_iso(),
+            "metadata": {
+                "backend": "modal_llm",
+                "endpoint": endpoint,
+                "model": model,
+                "latency_seconds": latency,
+                "raw_text_sha256": _text_sha256(raw_text),
+                "raw_text_chars": len(raw_text),
+                "parsed_items": len(items),
+                "editable_rows": len(rows),
+            },
+        })
         trace.append(f"[modal_llm] Parsed {len(rows)} rows with {model}{latency_note}")
+        trace.append(f"[trace] Wrote inference manifest: {manifest_path}")
         return rows, trace
 
     except Exception as exc:
         rows, fallback_trace = parse_receipt_text(raw_text)
+        manifest_path = write_manifest({
+            "run_id": run_id,
+            "kind": "receipt-inference",
+            "status": "fallback",
+            "started_at": started_at,
+            "ended_at": utc_now_iso(),
+            "metadata": {
+                "backend": "modal_llm",
+                "fallback_backend": "deterministic",
+                "endpoint": endpoint,
+                "raw_text_sha256": _text_sha256(raw_text),
+                "raw_text_chars": len(raw_text),
+                "rows": len(rows),
+            },
+            "error": str(exc),
+        })
         return rows, trace + [
             f"[modal_llm] Fallback to deterministic parser: {exc}",
+            f"[trace] Wrote inference manifest: {manifest_path}",
             *fallback_trace,
         ]

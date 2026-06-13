@@ -34,9 +34,9 @@ Return ONLY a JSON array. No markdown. No prose.
 
 Each array item must have:
 - "input": noisy receipt text as one string
-- "output": a JSON string, not an object
+- "output": a JSON object
 
-The output JSON string must parse to:
+The output object must have this shape:
 {
   "supplier": string,
   "invoice_no": string or null,
@@ -188,7 +188,7 @@ def generate_receipt_examples_with_model(
         with torch.no_grad():
             output_ids = model.generate(
                 **inputs,
-                max_new_tokens=2200,
+                max_new_tokens=3200,
                 do_sample=True,
                 temperature=0.8,
                 top_p=0.92,

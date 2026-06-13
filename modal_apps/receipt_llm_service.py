@@ -53,7 +53,6 @@ image = (
         "peft>=0.12.0",
         "torch",
         "transformers>=4.45.0",
-        "trl>=0.12.0",
         "unsloth>=2024.12",
         "bitsandbytes",
     )
@@ -102,8 +101,7 @@ def finetune_receipt_lora(
     learning_rate: float = 2e-4,
 ) -> dict:
     import torch
-    from transformers import TrainingArguments
-    from trl import SFTTrainer
+    from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArguments
     from unsloth import FastLanguageModel
 
     print(f"Loading base model: {BASE_MODEL}")
@@ -139,12 +137,28 @@ def finetune_receipt_lora(
         "a structured-output demo, not a robust receipt parser."
     )
 
-    trainer = SFTTrainer(
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    model.config.use_cache = False
+
+    def tokenize(batch):
+        return tokenizer(
+            batch["text"],
+            max_length=2048,
+            truncation=True,
+            padding=False,
+        )
+
+    tokenized_dataset = dataset.map(
+        tokenize,
+        batched=True,
+        remove_columns=dataset.column_names,
+    )
+
+    trainer = Trainer(
         model=model,
-        tokenizer=tokenizer,
-        train_dataset=dataset,
-        dataset_text_field="text",
-        max_seq_length=2048,
+        train_dataset=tokenized_dataset,
+        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
         args=TrainingArguments(
             per_device_train_batch_size=2,
             gradient_accumulation_steps=4,
@@ -189,7 +203,7 @@ def finetune_receipt_lora(
 )
 @modal.asgi_app()
 def api():
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import Body, FastAPI, HTTPException
     from unsloth import FastLanguageModel
 
     web_app = FastAPI(title="Dukaan Saathi Receipt LLM")
@@ -216,9 +230,8 @@ def api():
         }
 
     @web_app.post("/parse")
-    async def parse(request: Request):
+    async def parse(payload: dict = Body(...)):
         start = time.perf_counter()
-        payload = await request.json()
         raw_text = str(payload.get("raw_text") or "").strip()
         if not raw_text:
             raise HTTPException(status_code=400, detail="Missing raw_text")

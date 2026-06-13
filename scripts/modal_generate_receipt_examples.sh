@@ -9,6 +9,8 @@ COUNT="48"
 MODEL_ID="Qwen/Qwen2.5-1.5B-Instruct"
 BATCH_SIZE="8"
 INCLUDE_BASE="true"
+RUN_ID="${TRACE_RUN_ID:-modal-synthetic-$(date -u +%Y%m%dT%H%M%SZ)}"
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,10 +54,44 @@ EOF
   esac
 done
 
+INCLUDE_BASE_ARG="--include-base"
+if [[ "$INCLUDE_BASE" != "true" ]]; then
+  INCLUDE_BASE_ARG="--no-include-base"
+fi
+
+METADATA_JSON=$(printf '{"model_id":"%s","count":%s,"batch_size":%s,"include_base":%s,"modal_app":"dukaan-saathi-receipt-data-generator"}' \
+  "$MODEL_ID" "$COUNT" "$BATCH_SIZE" "$INCLUDE_BASE")
+
+set +e
 uv run modal run modal_apps/receipt_data_generator.py::generate \
   --dataset-path "$DATASET_PATH" \
   --output-path "$OUTPUT_PATH" \
   --count "$COUNT" \
   --model-id "$MODEL_ID" \
   --batch-size "$BATCH_SIZE" \
-  --include-base "$INCLUDE_BASE"
+  "$INCLUDE_BASE_ARG"
+STATUS_CODE=$?
+set -e
+
+if [[ "$STATUS_CODE" -eq 0 ]]; then
+  uv run python scripts/record_run_manifest.py \
+    --run-id "$RUN_ID" \
+    --kind "modal-synthetic" \
+    --status "succeeded" \
+    --started-at "$STARTED_AT" \
+    --input-file "$DATASET_PATH" \
+    --output-file "$OUTPUT_PATH" \
+    --metadata-json "$METADATA_JSON"
+else
+  uv run python scripts/record_run_manifest.py \
+    --run-id "$RUN_ID" \
+    --kind "modal-synthetic" \
+    --status "failed" \
+    --started-at "$STARTED_AT" \
+    --input-file "$DATASET_PATH" \
+    --output-file "$OUTPUT_PATH" \
+    --metadata-json "$METADATA_JSON" \
+    --error "modal generator exited with status $STATUS_CODE"
+fi
+
+exit "$STATUS_CODE"

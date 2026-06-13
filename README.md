@@ -261,6 +261,7 @@ scripts/start_llamacpp.sh
 scripts/run_app.sh
 scripts/modal_finetune_receipt.sh
 scripts/modal_generate_receipt_examples.sh
+docs/pipeline_traceability.md
 smoke_tests/smoke_test.py
 smoke_tests/test_receipt_parser_regression.py
 smoke_tests/test_receipt_correction.py
