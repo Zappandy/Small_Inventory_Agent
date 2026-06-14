@@ -19,6 +19,9 @@ tags:
 - human-in-the-loop
 - small-business
 - receipt-parsing
+- react-agent
+- approval-gated
+- llm-finetuning
 ---
 
 # Dukaan Saathi · Small-Model Inventory Copilot for Kirana Stores
@@ -41,6 +44,21 @@ receipt photo / text command
 ```
 
 Inventory is never updated directly from model output. Every write is approval-gated.
+
+## Using this Space
+
+The app opens on the **Dashboard** tab. Navigate using the top menu:
+
+- **Dashboard** — current stock levels, expiry status, and AI-generated insights
+- **Inventory** — full product list; add or edit items
+- **Bill Desk** — upload a supplier receipt photo or paste receipt text, correct extracted rows, then approve to update stock
+- **Voice** — record or upload a stock command, transcribe it, then approve the proposed change
+- **Orders** — pending reorder suggestions; mark as received after stock arrives
+- **Analytics** — sales window (7 d / 30 d / 90 d)
+
+**Note on state:** This Space uses SQLite with in-container storage. Inventory changes are visible during your session but may reset when the Space rebuilds. The seeded catalog (Bun, OBM, Happy Happy, Bingo (C), Parle (bulk)) is always restored on restart.
+
+**Note on Modal services:** Receipt image OCR and speech transcription use Modal-hosted endpoints that may have a cold start of 10–30 seconds on first use. A warm-up call runs automatically on page load.
 
 ## What it does
 
@@ -104,6 +122,28 @@ The owner must explicitly approve stock commands and receipt rows before SQLite 
 ### Reorder suggestions
 
 When stock falls below threshold, the app drafts reorder suggestions grouped by supplier. Nothing is sent or purchased automatically.
+
+## Quick demo (text-only, no Modal needed)
+
+Paste this into the **Bill Desk** receipt text box:
+
+```text
+Mahalakshmi Marketing
+
+| S.No | Particulars | Qty | Rate | Amount |
+| 5/   | Port        | 1   | X2450 | 2450  |
+| 10/  | Rs.g/c      | 4   | X8702 | 3480  |
+```
+
+Click **Parse receipt text**, then type this correction:
+
+```text
+first one Parle bulk, second one Bingo
+```
+
+Click **Apply correction** → rows map to known products → click **Approve receipt rows** → inventory updates.
+
+See the full [demo flow](#demo-flow) section below for the complete step-by-step walkthrough including voice and photo paths.
 
 ## Why small models fit this problem
 
@@ -646,7 +686,7 @@ Tasks 0
 
 ## Demo flow
 
-Use this flow for the hackathon demo video:
+Full walkthrough covering stock commands, receipt photo, and voice correction:
 
 ```text
 1. Open Dukaan Saathi.
@@ -665,51 +705,6 @@ Use this flow for the hackathon demo video:
 14. Show inventory updated.
 15. Show reorder draft updated.
 ```
-
-## Local text-only receipt test
-
-You can test the correction flow without Modal by pasting this into the Bill Desk text box:
-
-```text
-Mahalakshmi Marketing
-
-| S.No | Particulars | Qty | Rate | Amount |
-| 5/ | Port | 1 | X2450 | 2450 |
-| 10/ | Rs.g/c | 4 | X8702 | 3480 |
-```
-
-Click:
-
-```text
-Parse receipt text
-```
-
-Then enter this correction command:
-
-```text
-first one Parle bulk, second one Bingo
-```
-
-Click:
-
-```text
-Apply correction
-```
-
-Expected result:
-
-```text
-row 1 → Parle (bulk), apply=True
-row 2 → Bingo (C), apply=True
-```
-
-Then click:
-
-```text
-Approve receipt rows
-```
-
-Inventory should update only after approval.
 
 ## Safety rule
 
