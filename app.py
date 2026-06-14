@@ -366,15 +366,18 @@ def _h_voice_command(state, params):
     needs_approval = action in {"add_stock", "set_stock"} and bool(pid) and qty is not None
 
     state["voice_result"] = {
-        "action":     action,
-        "product":    parsed.get("product", ""),
-        "product_id": pid,
-        "quantity":   qty,
-        "unit":       parsed.get("unit", ""),
-        "confidence": parsed.get("confidence", "low"),
-        "trace":      parsed.get("trace", []),
-        "applied":    None,
+        "action":         action,
+        "product":        parsed.get("product", ""),
+        "product_id":     pid,
+        "quantity":       qty,
+        "unit":           parsed.get("unit", ""),
+        "confidence":     parsed.get("confidence", "low"),
+        "trace":          parsed.get("trace", []),
+        "applied":        None,
         "needs_approval": needs_approval,
+        "suggested_name": parsed.get("suggested_name"),
+        "suggested_qty":  parsed.get("suggested_qty"),
+        "raw_command":    text,
     }
     state["page"] = "add"
     state["active_method"] = "voice"

@@ -124,6 +124,7 @@ MODAL_RECEIPT_ENDPOINT
 MODAL_RECEIPT_LLM_ENDPOINT
 MODAL_SPEECH_ENDPOINT
 SPEECH_ASR_ENDPOINT
+MODAL_NLU_ENDPOINT        # Qwen2.5-1.5B command slot extractor; optional, falls back to deterministic
 DB_PATH
 TRACE_DIR
 ```
@@ -204,6 +205,16 @@ Prioritize safety and demo-critical correctness before polish.
 - Orders support "Mark received" after approval.
 - Analytics has a `7d` / `30d` / `90d` sales window.
 - Modal photo/speech flows expose cold-start loading hints and `/api/warm`.
+- ReAct agent trace is now surfaced in the UI as a collapsible "Agent reasoning"
+  panel on both the photo and voice result cards.
+- Unknown-product commands now extract a suggested name and quantity and offer an
+  inline "Add new product" form instead of showing a blank result.
+- NLU slot extraction service added (`modal_apps/command_nlu_service.py`) using
+  `Qwen/Qwen2.5-1.5B-Instruct`. Deploy with
+  `scripts/modal_deploy.sh modal_apps/command_nlu_service.py`. Set
+  `MODAL_NLU_ENDPOINT` in `.env`. When the endpoint is set, `run_command_parse`
+  tries NLU first; falls back to the ReAct/deterministic path if the endpoint is
+  unavailable or returns an unknown intent.
 
 ### P0 / P1
 
@@ -214,16 +225,23 @@ Prioritize safety and demo-critical correctness before polish.
 - Keep fractional quantity behavior covered in tests when changing receipt,
   stock, reorder, or sales flows.
 
+### P1
+
+- Add a mocked success test for `command_nlu.extract_command_slots` covering the
+  happy path (known product) and the unknown-product path (suggested_name surfaced).
+- Fine-tune `command_nlu_service.py` on synthetic kirana commands once the
+  zero-shot baseline is validated. Use `modal_apps/receipt_data_generator.py` as
+  the pattern for generating Telugu/English training pairs.
+
 ### P2
 
 - Improve `/api/warm` with endpoint-specific health routes if Modal services
-  expose them, while keeping page load non-blocking.
+  expose them (including the new NLU health endpoint), while keeping page load
+  non-blocking.
 - Add mocked tests for successful and malformed Modal/llama.cpp model responses.
 
 ### P3
 
-- Consider LLM-backed voice NLU for Telugu/code-mixed commands, with deterministic
-  parser fallback and owner confirmation.
 - Consider LLM-generated dashboard prose only after deterministic insights are
   stable.
 - Expand receipt fine-tuning data and benchmark coverage.

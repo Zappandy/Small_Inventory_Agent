@@ -27,6 +27,13 @@ case "$SERVICE" in
     ENV_VAR="${5:-MODAL_RECEIPT_LLM_ENDPOINT}"
     ALSO_ARGS=(--also "MODAL_RECEIPT_PARSER_ENDPOINT")
     ;;
+  modal_apps/command_nlu_service.py)
+    APP_NAME="${2:-dukaan-saathi-command-nlu}"
+    FUNCTION_NAME="${3:-extract}"
+    ROUTE="${4:-}"
+    ENV_VAR="${5:-MODAL_NLU_ENDPOINT}"
+    ALSO_ARGS=()
+    ;;
   *)
     APP_NAME="${2:?Usage: scripts/modal_deploy.sh <service> <app-name> <function-name> [route] [env-var]}"
     FUNCTION_NAME="${3:?Usage: scripts/modal_deploy.sh <service> <app-name> <function-name> [route] [env-var]}"

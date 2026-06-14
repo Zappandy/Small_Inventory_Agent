@@ -2898,3 +2898,75 @@ kbd {
     .add-switch-item,
     .add-photo-zone { transition: none; }
 }
+
+/* ── Agent trace collapsible ──────────────────────────────────────── */
+.agent-trace {
+    margin-top: 12px;
+    border: 1px solid var(--surface-2);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.agent-trace > summary {
+    padding: 8px 12px;
+    font-size: .82em;
+    color: var(--ink-3);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+.agent-trace > summary::before {
+    content: '▸ ';
+    font-size: .9em;
+}
+.agent-trace[open] > summary::before { content: '▾ '; }
+.agent-trace-body {
+    padding: 8px 12px 10px;
+    border-top: 1px solid var(--surface-2);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.agent-trace-line {
+    font-size: .78em;
+    line-height: 1.45;
+    color: var(--ink-3);
+    font-family: var(--font-mono, monospace);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.agent-trace-line.at-thought { color: var(--info); }
+.agent-trace-line.at-action  { color: var(--accent); font-weight: 600; }
+.agent-trace-line.at-obs     { color: var(--ink-2); }
+
+/* ── Inline new-product creation form (voice unknown path) ──────── */
+.agent-create-form {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px dashed var(--warn);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.agent-create-title {
+    font-size: .82em;
+    font-weight: 600;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.agent-create-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.agent-create-row label {
+    font-size: .85em;
+    color: var(--ink-2);
+    min-width: 80px;
+}
+.agent-create-row .input {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: .9em;
+}

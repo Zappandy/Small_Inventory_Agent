@@ -574,7 +574,7 @@ def get_low_stock() -> list[dict[str, Any]]:
     ]
 
 
-def find_product(query: str) -> dict[str, Any] | None:
+def find_product(query: str, fuzzy_cutoff: float = 0.60) -> dict[str, Any] | None:
     """
     Find a product from:
     - exact alias
@@ -665,7 +665,7 @@ def find_product(query: str) -> dict[str, Any] | None:
         query_norm,
         list(candidates.keys()),
         n=1,
-        cutoff=0.60,
+        cutoff=fuzzy_cutoff,
     )
 
     if matches:

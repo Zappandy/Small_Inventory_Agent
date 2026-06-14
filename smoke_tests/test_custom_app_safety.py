@@ -236,5 +236,68 @@ class CustomAppSafetyTest(unittest.TestCase):
         self.assertTrue(any("distil-whisper" in line for line in trace))
 
 
+    def test_nlu_known_product_returns_pending_approval_action(self) -> None:
+        from frontend_backend import run_command_parse
+
+        class _GoodNluResponse:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self):
+                return {
+                    "intent": "add_stock",
+                    "product_name": "Bun",
+                    "quantity": 12,
+                    "unit": None,
+                    "confidence": "high",
+                    "model": "Qwen2.5-1.5B-Instruct",
+                }
+
+        with patch.dict(os.environ, {"MODAL_NLU_ENDPOINT": "https://example.test/nlu"}):
+            with patch("dukaan_saathi.integrations.command_nlu.requests.post", return_value=_GoodNluResponse()):
+                result = run_command_parse("add Bun 12")
+
+        self.assertEqual(result["action"], "add_stock")
+        self.assertEqual(result["product_id"], "bun")
+        self.assertEqual(float(result["quantity"]), 12.0)
+        self.assertEqual(result["confidence"], "high")
+        self.assertTrue(any("NLU" in line or "nlu" in line for line in result["trace"]))
+
+    def test_nlu_unknown_product_surfaces_suggested_name(self) -> None:
+        from frontend_backend import run_command_parse
+
+        class _UnknownProductResponse:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self):
+                return {
+                    "intent": "add_stock",
+                    "product_name": "Oranges",
+                    "quantity": 10,
+                    "unit": None,
+                    "confidence": "high",
+                    "model": "Qwen2.5-1.5B-Instruct",
+                }
+
+        with patch.dict(os.environ, {"MODAL_NLU_ENDPOINT": "https://example.test/nlu"}):
+            with patch("dukaan_saathi.integrations.command_nlu.requests.post", return_value=_UnknownProductResponse()):
+                result = run_command_parse("Add 10 oranges.")
+
+        self.assertEqual(result["action"], "unknown")
+        self.assertEqual(result["suggested_name"], "Oranges")
+        self.assertEqual(result["suggested_qty"], 10)
+
+    def test_nlu_endpoint_missing_falls_back_to_deterministic(self) -> None:
+        from frontend_backend import run_command_parse
+
+        env = {k: v for k, v in os.environ.items() if k != "MODAL_NLU_ENDPOINT"}
+        with patch.dict(os.environ, env, clear=True):
+            result = run_command_parse("add Bun 12")
+
+        self.assertEqual(result["action"], "add_stock")
+        self.assertEqual(result["product_id"], "bun")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -40,10 +40,22 @@ def parse_stock_command(command: str) -> tuple[dict[str, Any], list[str]]:
     product = find_product(command)
     if product is None:
         trace.append("No product matched.")
+        numbers = [int(n) for n in re.findall(r"\d+", command)]
+        stop_words = {"add", "set", "stock", "received", "arrived", "low", "out",
+                      "finished", "to", "the", "a", "an", "kg", "g", "ml", "l",
+                      "unit", "units", "piece", "pieces", "pack", "packs"}
+        words = [
+            w for raw in re.sub(r"\d+", "", command.lower()).split()
+            if (w := re.sub(r"[^a-z]", "", raw)) and w not in stop_words
+        ]
+        suggested_name = " ".join(words).title() if words else None
+        suggested_qty = numbers[-1] if numbers else None
         return {
             "status": "needs_review",
             "message": "Could not match a known product.",
             "raw_command": command,
+            "suggested_name": suggested_name,
+            "suggested_qty": suggested_qty,
         }, trace
 
     trace.append(f"Matched product: {product['name']}")

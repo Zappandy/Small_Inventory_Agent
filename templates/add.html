@@ -276,6 +276,20 @@
           {% endfor %}
           </tbody>
         </table>
+        {% if photo_result.trace %}
+          <details class="agent-trace">
+            <summary>Agent reasoning ({{ photo_result.trace|length }} steps)</summary>
+            <div class="agent-trace-body">
+              {% for line in photo_result.trace %}
+                <div class="agent-trace-line
+                  {%- if line.startswith('Thought:') %} at-thought
+                  {%- elif line.startswith('Action:') %} at-action
+                  {%- elif line.startswith('Observation:') %} at-obs
+                  {%- endif %}">{{ line }}</div>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
       </div>
     {% endif %}
   </div>
@@ -393,36 +407,85 @@
             {{ voice_result.confidence }} confidence
           </span>
         </div>
-        <dl class="add-photo-dl">
-          <dt>Action</dt>   <dd><code>{{ voice_result.action }}</code></dd>
-          <dt>Product</dt>  <dd>{{ voice_result.product or '—' }}</dd>
-          <dt>Quantity</dt> <dd>{% if voice_result.quantity is not none %}{{ voice_result.quantity }} {{ voice_result.unit }}{% else %}—{% endif %}</dd>
-        </dl>
-        {% if voice_result.needs_approval %}
-          <div class="alert alert-info" style="margin-top:10px">
-            <span class="alert-icon" aria-hidden="true">{{ icons.info|safe }}</span>
+
+        {% if voice_result.action == 'unknown' %}
+          {# ── Unknown product: no catalog match ── #}
+          <div class="alert alert-warn" style="margin-top:10px">
+            <span class="alert-icon" aria-hidden="true">{{ icons.warn|safe }}</span>
             <div class="alert-body">
-              <div class="alert-title">Review before updating stock</div>
-              <div class="alert-sub">Inventory will change only after you approve this parsed command.</div>
+              <div class="alert-title">Product not in catalog</div>
+              {% if voice_result.suggested_name %}
+                <div class="alert-sub">"{{ voice_result.suggested_name }}" wasn't found. Add it as a new product below.</div>
+              {% else %}
+                <div class="alert-sub">No matching product. Try a known name like Bun, OBM, or Bingo.</div>
+              {% endif %}
             </div>
           </div>
-          <button class="btn btn-primary" style="margin-top:10px"
-                  onclick='kirana.dispatch("voice_apply", {{ voice_result|tojson }})'>
-            {{ icons.check|safe }} Approve stock change
-          </button>
+          {% if voice_result.suggested_name %}
+            <form class="agent-create-form"
+                  onsubmit="event.preventDefault(); kirana.submitForm('form-create-new','add_product');">
+              <div class="agent-create-title">Add new product</div>
+              <div class="agent-create-row">
+                <label for="new-prod-name">Name</label>
+                <input id="new-prod-name" form="form-create-new" name="name"
+                       class="input" value="{{ voice_result.suggested_name }}">
+              </div>
+              <div class="agent-create-row">
+                <label for="new-prod-qty">Initial stock</label>
+                <input id="new-prod-qty" form="form-create-new" name="qty"
+                       class="input" type="number" step="any" min="0"
+                       value="{{ voice_result.suggested_qty or 0 }}">
+              </div>
+              <input type="hidden" form="form-create-new" name="category" value="Other">
+              <input type="hidden" form="form-create-new" name="unit" value="unit">
+              <button form="form-create-new" type="submit"
+                      class="btn btn-primary" style="margin-top:8px">
+                {{ icons.plus|safe }} Add to inventory
+              </button>
+            </form>
+            <form id="form-create-new" hidden></form>
+          {% endif %}
+        {% else %}
+          {# ── Known product: show parsed action ── #}
+          <dl class="add-photo-dl">
+            <dt>Action</dt>   <dd><code>{{ voice_result.action }}</code></dd>
+            <dt>Product</dt>  <dd>{{ voice_result.product or '—' }}</dd>
+            <dt>Quantity</dt> <dd>{% if voice_result.quantity is not none %}{{ voice_result.quantity }} {{ voice_result.unit }}{% else %}—{% endif %}</dd>
+          </dl>
+          {% if voice_result.needs_approval %}
+            <div class="alert alert-info" style="margin-top:10px">
+              <span class="alert-icon" aria-hidden="true">{{ icons.info|safe }}</span>
+              <div class="alert-body">
+                <div class="alert-title">Review before updating stock</div>
+                <div class="alert-sub">Inventory will change only after you approve this parsed command.</div>
+              </div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:10px"
+                    onclick='kirana.dispatch("voice_apply", {{ voice_result|tojson }})'>
+              {{ icons.check|safe }} Approve stock change
+            </button>
+          {% endif %}
+          {% if voice_result.applied %}
+            <div class="alert alert-success" style="margin-top:10px">
+              <span class="alert-icon" aria-hidden="true">{{ icons.check|safe }}</span>
+              <div class="alert-body"><div class="alert-title">{{ voice_result.applied }}</div></div>
+            </div>
+          {% endif %}
         {% endif %}
-        {% if voice_result.applied %}
-          <div class="alert alert-success" style="margin-top:10px">
-            <span class="alert-icon" aria-hidden="true">{{ icons.check|safe }}</span>
-            <div class="alert-body"><div class="alert-title">{{ voice_result.applied }}</div></div>
-          </div>
-        {% endif %}
+
         {% if voice_result.trace %}
-          <div class="muted" style="margin-top:10px">
-            {% for line in voice_result.trace %}
-              <div>{{ line }}</div>
-            {% endfor %}
-          </div>
+          <details class="agent-trace">
+            <summary>Agent reasoning ({{ voice_result.trace|length }} steps)</summary>
+            <div class="agent-trace-body">
+              {% for line in voice_result.trace %}
+                <div class="agent-trace-line
+                  {%- if line.startswith('Thought:') %} at-thought
+                  {%- elif line.startswith('Action:') %} at-action
+                  {%- elif line.startswith('Observation:') %} at-obs
+                  {%- endif %}">{{ line }}</div>
+              {% endfor %}
+            </div>
+          </details>
         {% endif %}
       </div>
     {% endif %}
