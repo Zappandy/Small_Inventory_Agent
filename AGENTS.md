@@ -192,7 +192,7 @@ Use `uv run modal ...` for Modal commands.
 
 Prioritize safety and demo-critical correctness before polish.
 
-### Completed Recently
+### Completed
 
 - Voice stock commands parse to a pending action and require explicit owner
   approval before stock writes.
@@ -205,46 +205,27 @@ Prioritize safety and demo-critical correctness before polish.
 - Orders support "Mark received" after approval.
 - Analytics has a `7d` / `30d` / `90d` sales window.
 - Modal photo/speech flows expose cold-start loading hints and `/api/warm`.
-- ReAct agent trace is now surfaced in the UI as a collapsible "Agent reasoning"
-  panel on both the photo and voice result cards.
-- Unknown-product commands now extract a suggested name and quantity and offer an
+- ReAct agent trace surfaced in the UI as a collapsible "Agent reasoning" panel
+  on both the photo and voice result cards.
+- Unknown-product commands extract a suggested name and quantity and offer an
   inline "Add new product" form instead of showing a blank result.
-- NLU slot extraction service added (`modal_apps/command_nlu_service.py`) using
-  `Qwen/Qwen2.5-1.5B-Instruct`. Deploy with
-  `scripts/modal_deploy.sh modal_apps/command_nlu_service.py`. Set
-  `MODAL_NLU_ENDPOINT` in `.env`. When the endpoint is set, `run_command_parse`
-  tries NLU first; falls back to the ReAct/deterministic path if the endpoint is
-  unavailable or returns an unknown intent.
+- NLU slot extraction service (`modal_apps/command_nlu_service.py`) using
+  `Qwen/Qwen2.5-1.5B-Instruct`. Deployed; `MODAL_NLU_ENDPOINT` wired into
+  `.env` and HF Space secrets. `run_command_parse` tries NLU first, falls back
+  to ReAct/deterministic on failure or unknown intent.
+- Mocked NLU tests cover the happy path, unknown-product path, and
+  missing-endpoint fallback (`smoke_tests/test_custom_app_safety.py`).
+- `/api/warm` pings the NLU health endpoint (`nlu-health`) alongside the
+  receipt and speech endpoints.
 
-### P0 / P1
+### Remaining
 
 - Add and maintain tests for every approval gate and order/receipt transition.
 - Migrate the custom FastAPI inventory writes from `kirana_db.py` toward
-  `dukaan_saathi/services/inventory.py`, or keep documenting the adapter
-  boundary explicitly until migration is done.
+  `dukaan_saathi/services/inventory.py`, or document the adapter boundary
+  explicitly until migration is done.
 - Keep fractional quantity behavior covered in tests when changing receipt,
   stock, reorder, or sales flows.
-
-### P1
-
-- Add a mocked success test for `command_nlu.extract_command_slots` covering the
-  happy path (known product) and the unknown-product path (suggested_name surfaced).
-- Fine-tune `command_nlu_service.py` on synthetic kirana commands once the
-  zero-shot baseline is validated. Use `modal_apps/receipt_data_generator.py` as
-  the pattern for generating Telugu/English training pairs.
-
-### P2
-
-- Improve `/api/warm` with endpoint-specific health routes if Modal services
-  expose them (including the new NLU health endpoint), while keeping page load
-  non-blocking.
-- Add mocked tests for successful and malformed Modal/llama.cpp model responses.
-
-### P3
-
-- Consider LLM-generated dashboard prose only after deterministic insights are
-  stable.
-- Expand receipt fine-tuning data and benchmark coverage.
 
 ## UI And Demo Constraints
 

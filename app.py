@@ -659,11 +659,17 @@ def api_warm() -> dict:
         os.getenv("MODAL_SPEECH_ENDPOINT", "").strip(),
         os.getenv("SPEECH_ASR_ENDPOINT", "").strip(),
     ]
+
+    # NLU health endpoint — derive from extract URL by swapping the label
+    nlu_extract = os.getenv("MODAL_NLU_ENDPOINT", "").strip()
+    if nlu_extract:
+        endpoints.append(nlu_extract.replace("nlu-extract", "nlu-health"))
+
     warmed = 0
 
     def _ping(url: str) -> None:
         try:
-            requests.head(url, timeout=5)
+            requests.get(url, timeout=5)
         except Exception:
             pass
 
