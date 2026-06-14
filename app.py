@@ -420,8 +420,8 @@ def _h_voice_apply(state, params):
         "applied": applied,
         "needs_approval": False,
     }
-    state["page"] = "add"
-    state["active_method"] = "voice"
+    state["page"] = "inventory"
+    state["filters"] = {"q": "", "category": "All", "status": "All"}
     return state, f"success|{applied}"
 
 

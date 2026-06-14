@@ -73,6 +73,16 @@ def _action_from_nlu(slots: dict, trace: list[str]) -> dict[str, Any] | None:
         trace.append("Thought: NLU intent or product unclear; handing off to deterministic parser.")
         return None
 
+    # mark_out/mark_low with a non-trivial quantity is contradictory
+    # (model probably misread "add 10 X" as mark_out). Fall through so the
+    # deterministic keyword parser can handle it correctly.
+    if intent in {"mark_out", "mark_low"} and quantity is not None and float(quantity) > 1:
+        trace.append(
+            f"Thought: NLU returned {intent!r} with qty={quantity} — "
+            "contradictory signal; handing off to deterministic parser."
+        )
+        return None
+
     trace.append(f"Thought: Look up '{product_name}' in the catalog (strict fuzzy threshold).")
     catalog_hit = find_product(product_name, fuzzy_cutoff=0.75)
 
