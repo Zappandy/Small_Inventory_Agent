@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -373,6 +374,30 @@ button:not(.selected) {
     margin-top: 12px;
 }
 
+.capability-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin: 0 0 18px;
+}
+
+.capability-card {
+    border: 1px solid var(--kirana-line);
+    background: rgba(220, 246, 229, 0.05);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.capability-card strong {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.capability-card span {
+    color: var(--kirana-muted);
+    font-size: 13px;
+}
+
 @media (max-width: 900px) {
     .app-shell {
         display: block !important;
@@ -402,6 +427,10 @@ button:not(.selected) {
 
     .metric-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .capability-grid {
+        grid-template-columns: 1fr;
     }
 }
 """
@@ -480,12 +509,36 @@ def sidebar_brand_html() -> str:
     """
 
 
+def endpoint_status() -> dict[str, bool]:
+    return {
+        "ocr": bool(os.getenv("MODAL_RECEIPT_ENDPOINT", "").strip()),
+        "speech": bool(
+            (
+                os.getenv("MODAL_SPEECH_ENDPOINT")
+                or os.getenv("SPEECH_ASR_ENDPOINT")
+                or ""
+            ).strip()
+        ),
+        "hf_model": bool(os.getenv("HF_RECEIPT_MODEL_REPO", "").strip()),
+        "modal_parser": bool(
+            (
+                os.getenv("MODAL_RECEIPT_LLM_ENDPOINT")
+                or os.getenv("MODAL_RECEIPT_PARSER_ENDPOINT")
+                or ""
+            ).strip()
+        ),
+    }
+
+
 def sidebar_footer_html() -> str:
-    return """
+    status = endpoint_status()
+    ocr_text = "OCR ready" if status["ocr"] else "OCR endpoint missing"
+    speech_text = "Speech ready" if status["speech"] else "Speech endpoint missing"
+    return f"""
     <aside>
         <div class="sidebar-footer">
-            <div class="sidebar-status"><span class="status-dot"></span>Vision offline</div>
-            <div>Andhra Pradesh · runs locally</div>
+            <div class="sidebar-status"><span class="status-dot"></span>{ocr_text}</div>
+            <div>{speech_text}</div>
         </div>
     </aside>
     """
@@ -526,6 +579,34 @@ def dashboard_header_html() -> str:
             <div class="metric-subtitle">estimated replenishment value</div>
         </div>
     </section>
+    """
+
+
+def capabilities_html() -> str:
+    status = endpoint_status()
+    receipt_backend_status = {
+        "hf_inference": "HF model configured" if status["hf_model"] else "HF model repo missing",
+        "modal_llm": "Modal parser configured" if status["modal_parser"] else "Modal parser endpoint missing",
+        "llamacpp": "Local llama.cpp backend selected",
+        "deterministic": "Rule-based parser selected",
+    }.get(config.RECEIPT_BACKEND, "Unknown parser backend")
+    ocr_status = "configured" if status["ocr"] else "not configured"
+    speech_status = "configured" if status["speech"] else "not configured"
+    return f"""
+    <div class="capability-grid">
+        <div class="capability-card">
+            <strong>Receipt text parser</strong>
+            <span>Backend: <code>{config.RECEIPT_BACKEND}</code>. {receipt_backend_status}. The fine-tuned model parses receipt text into editable rows.</span>
+        </div>
+        <div class="capability-card">
+            <strong>Photo OCR</strong>
+            <span>MiniCPM-V endpoint is {ocr_status}. When configured, uploaded receipt photos are converted to text before parsing.</span>
+        </div>
+        <div class="capability-card">
+            <strong>Voice correction</strong>
+            <span>Speech ASR endpoint is {speech_status}. When configured, audio fills the correction command only.</span>
+        </div>
+    </div>
     """
 
 
@@ -662,14 +743,9 @@ def build_demo() -> gr.Blocks:
                     elem_classes=["nav-button", "nav-button-primary"],
                 )
                 nav_inventory = gr.Button("Inventory", elem_classes=["nav-button"])
-                nav_add_product = gr.Button("Add Product", elem_classes=["nav-button"])
-                nav_orders = gr.Button(
-                    f"Orders  {stats['low_stock_count']}",
-                    elem_classes=["nav-button"],
-                )
-                nav_analytics = gr.Button("Analytics", elem_classes=["nav-button"])
-                nav_seasonal = gr.Button("Seasonal", elem_classes=["nav-button"])
-                nav_settings = gr.Button("Settings", elem_classes=["nav-button"])
+                nav_stock_command = gr.Button("Stock Command", elem_classes=["nav-button"])
+                nav_receipt_ai = gr.Button("Receipt AI", elem_classes=["nav-button"])
+                nav_reorder = gr.Button(f"Reorder  {stats['low_stock_count']}", elem_classes=["nav-button"])
                 gr.HTML(sidebar_footer_html())
 
             with gr.Column(elem_classes=["main-surface"]):
@@ -677,6 +753,10 @@ def build_demo() -> gr.Blocks:
 
                 with gr.Tabs(selected="overview", elem_classes=["gradio-tabs"]) as workspace_tabs:
                     with gr.Tab(bi("Overview", "సారాంశం"), id="overview"):
+                        gr.Markdown(capabilities_html())
+                        with gr.Row():
+                            overview_receipt_btn = gr.Button("Open receipt photo / text import", variant="primary")
+                            overview_reorder_open_btn = gr.Button("Open reorder draft")
                         with gr.Row():
                             with gr.Column(scale=3):
                                 gr.Markdown(
@@ -690,9 +770,9 @@ def build_demo() -> gr.Blocks:
                                 reorder_preview = gr.Dataframe(
                                     value=empty_reorder_df,
                                     headers=REORDER_COLUMNS,
-                                    interactive=True,
+                                    interactive=False,
                                     wrap=True,
-                                    label=bi("Editable reorder draft", "సవరించగలిగే ఆర్డర్ డ్రాఫ్ట్"),
+                                    label=bi("Reorder candidates", "రీఆర్డర్ అభ్యర్థులు"),
                                 )
                                 overview_reorder_btn = gr.Button(
                                     bi("Refresh reorder queue", "రీఆర్డర్ రిఫ్రెష్"),
@@ -813,10 +893,13 @@ def build_demo() -> gr.Blocks:
 
                     with gr.Tab(bi("Receipt import", "బిల్ ఇంపోర్ట్"), id="receipt-import"):
                         gr.Markdown(
-                            """
+                            f"""
                             <div class="panel-heading">
                             <h2>Receipt import</h2>
-                            <div class="panel-subtitle">Model output fills editable rows first; approval updates stock.</div>
+                            <div class="panel-subtitle">Photo OCR, fine-tuned receipt text parsing, speech correction, editable rows, then owner approval.</div>
+                            </div>
+                            <div class="info-strip">
+                            Pipeline: receipt photo → MiniCPM-V OCR → <code>{config.RECEIPT_BACKEND}</code> receipt parser → editable table → typed or spoken correction → approval.
                             </div>
                             """
                         )
@@ -934,9 +1017,9 @@ def build_demo() -> gr.Blocks:
                         reorder_table = gr.Dataframe(
                             value=empty_reorder_df,
                             headers=REORDER_COLUMNS,
-                            interactive=True,
+                            interactive=False,
                             wrap=True,
-                            label=bi("Editable reorder draft", "సవరించగలిగే ఆర్డర్ డ్రాఫ్ట్"),
+                            label=bi("Reorder draft", "ఆర్డర్ డ్రాఫ్ట్"),
                         )
                         reorder_trace = gr.Textbox(
                             label=bi("Reorder trace", "రీఆర్డర్ ట్రేస్"),
@@ -952,111 +1035,16 @@ def build_demo() -> gr.Blocks:
                             fn=handle_draft_reorder,
                             outputs=[reorder_preview, overview_reorder_trace],
                         )
-
-                    with gr.Tab(bi("Add Product", "ఉత్పత్తి జోడించు"), id="add-product"):
-                        gr.Markdown(
-                            """
-                            <div class="panel-heading">
-                            <h2>Add Product</h2>
-                            <div class="panel-subtitle">Manual intake draft matching the demo flow. Saving is intentionally not wired yet.</div>
-                            </div>
-                            <div class="route-note">
-                            Product creation needs a service-layer write path before it can update inventory. That keeps the owner-approval rule intact.
-                            </div>
-                            """
-                        )
-                        with gr.Row():
-                            gr.Textbox(label="Product name", placeholder="Basmati Rice")
-                            gr.Textbox(label="Telugu name", placeholder="బాస్మతి బియ్యం")
-                        with gr.Row():
-                            gr.Textbox(label="Category", placeholder="Grains & Flour")
-                            gr.Textbox(label="Supplier", placeholder="Sri Lakshmi Traders")
-                        with gr.Row():
-                            gr.Number(label="On hand", value=0)
-                            gr.Textbox(label="Unit", placeholder="kg")
-                            gr.Number(label="Reorder threshold", value=5)
-
-                    with gr.Tab(bi("Orders", "ఆర్డర్లు"), id="orders"):
-                        gr.Markdown(
-                            """
-                            <div class="panel-heading">
-                            <h2>Orders</h2>
-                            <div class="panel-subtitle">Receipt import and reorder drafting are the active order workflows in this MVP.</div>
-                            </div>
-                            """
-                        )
-                        with gr.Row():
-                            orders_receipt_btn = gr.Button("Open receipt import", variant="primary")
-                            orders_reorder_btn = gr.Button("Open reorder draft")
-                        gr.Markdown(
-                            """
-                            <div class="route-note">
-                            The JPEG has a richer orders queue. In this codebase, receipt rows and reorder drafts are the concrete order-like workflows.
-                            </div>
-                            """
-                        )
-                        orders_receipt_btn.click(fn=lambda: select_tab("receipt-import"), outputs=workspace_tabs)
-                        orders_reorder_btn.click(fn=lambda: select_tab("reorder-draft"), outputs=workspace_tabs)
-
-                    with gr.Tab(bi("Analytics", "విశ్లేషణలు"), id="analytics"):
-                        gr.Markdown(
-                            """
-                            <div class="panel-heading">
-                            <h2>Analytics</h2>
-                            <div class="panel-subtitle">Operational signals from current inventory and reorder thresholds.</div>
-                            </div>
-                            """
-                        )
-                        analytics_reorder = gr.Dataframe(
-                            value=empty_reorder_df,
-                            headers=REORDER_COLUMNS,
-                            interactive=False,
-                            wrap=True,
-                            label="Low-stock analysis",
-                        )
-                        analytics_refresh = gr.Button("Refresh low-stock analysis", variant="primary")
-                        analytics_trace = gr.Textbox(label="Analysis trace", lines=6, elem_classes=["trace-box"])
-                        analytics_refresh.click(
-                            fn=handle_draft_reorder,
-                            outputs=[analytics_reorder, analytics_trace],
-                        )
-
-                    with gr.Tab(bi("Seasonal", "సీజనల్"), id="seasonal"):
-                        gr.Markdown(
-                            """
-                            <div class="panel-heading">
-                            <h2>Seasonal</h2>
-                            <div class="panel-subtitle">Festival demand planning shell from the design reference.</div>
-                            </div>
-                            <div class="route-note">
-                            Bonalu demand planning is visual-only for now. It should be backed by a real seasonal forecast service before it proposes stock changes.
-                            </div>
-                            """
-                        )
-
-                    with gr.Tab(bi("Settings", "సెట్టింగ్స్"), id="settings"):
-                        gr.Markdown(
-                            f"""
-                            <div class="panel-heading">
-                            <h2>Settings</h2>
-                            <div class="panel-subtitle">Runtime configuration for the local demo.</div>
-                            </div>
-                            <div class="route-note">
-                            Receipt backend: <code>{config.RECEIPT_BACKEND}</code><br>
-                            Inventory writes still require owner approval and go through the inventory service.
-                            </div>
-                            """
-                        )
+                        overview_receipt_btn.click(fn=lambda: select_tab("receipt-import"), outputs=workspace_tabs)
+                        overview_reorder_open_btn.click(fn=lambda: select_tab("reorder-draft"), outputs=workspace_tabs)
 
                 demo.load(fn=inventory_df, outputs=inventory_table)
 
                 nav_overview.click(fn=lambda: select_tab("overview"), outputs=workspace_tabs)
                 nav_inventory.click(fn=lambda: select_tab("inventory"), outputs=workspace_tabs)
-                nav_add_product.click(fn=lambda: select_tab("add-product"), outputs=workspace_tabs)
-                nav_orders.click(fn=lambda: select_tab("orders"), outputs=workspace_tabs)
-                nav_analytics.click(fn=lambda: select_tab("analytics"), outputs=workspace_tabs)
-                nav_seasonal.click(fn=lambda: select_tab("seasonal"), outputs=workspace_tabs)
-                nav_settings.click(fn=lambda: select_tab("settings"), outputs=workspace_tabs)
+                nav_stock_command.click(fn=lambda: select_tab("stock-command"), outputs=workspace_tabs)
+                nav_receipt_ai.click(fn=lambda: select_tab("receipt-import"), outputs=workspace_tabs)
+                nav_reorder.click(fn=lambda: select_tab("reorder-draft"), outputs=workspace_tabs)
 
         # Gradio 6 moved css/theme to launch(), but hosted Gradio runtimes often
         # launch the exported Blocks object themselves. Keep the exported demo styled.
