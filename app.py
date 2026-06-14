@@ -239,22 +239,32 @@ def _h_voice_command(state, params):
         return state, "warn|Please type a command"
     parsed = run_command_parse(text)
     applied = None
-    if parsed.get("action") == "add_stock" and parsed.get("product") and parsed.get("quantity"):
-        matches = db.find_by_name(parsed["product"])
-        if matches:
-            db.adjust_stock(matches[0]["id"], parsed["quantity"], mode="add")
-            applied = f"Added {parsed['quantity']} {parsed.get('unit','')} to {matches[0]['name']}"
+    action = parsed.get("action", "unknown")
+    pid = parsed.get("product_id")
+    qty = parsed.get("quantity")
+
+    if action == "add_stock" and pid and qty:
+        db.adjust_stock(pid, float(qty), mode="add")
+        p = db.get_product(pid)
+        name = p["name"] if p else parsed.get("product", "product")
+        applied = f"Added {qty} to {name}"
+    elif action == "set_stock" and pid and qty is not None:
+        db.adjust_stock(pid, float(qty), mode="set")
+        p = db.get_product(pid)
+        name = p["name"] if p else parsed.get("product", "product")
+        applied = f"Set {name} stock to {qty}"
+
     state["voice_result"] = {
-        "action":     parsed.get("action", "unknown"),
+        "action":     action,
         "product":    parsed.get("product", ""),
-        "quantity":   parsed.get("quantity"),
+        "quantity":   qty,
         "unit":       parsed.get("unit", ""),
         "confidence": parsed.get("confidence", "low"),
         "applied":    applied,
     }
     state["page"] = "add"
     state["active_method"] = "voice"
-    return state, ("success|" + applied) if applied else "info|Command parsed"
+    return state, ("success|" + applied) if applied else "info|Command parsed — review above"
 
 
 def _h_generate_orders(state, _params):

@@ -21,26 +21,33 @@ from dukaan_saathi.services.reorder import draft_reorder
 
 def run_command_parse(text: str) -> dict[str, Any]:
     """
-    Parse a typed/voice command using the real Dukaan Saathi backend parser.
-
-    This function does not write inventory.
-    Inventory writes must happen only after explicit UI approval.
+    Parse a typed/voice command and normalise to the shape _h_voice_command expects:
+      action, product, product_id, quantity, unit, confidence, trace
     """
-    action, trace = parse_stock_command(text)
+    result, trace = parse_stock_command(text)
 
-    if not action:
+    action_type = (result or {}).get("type")
+    status = (result or {}).get("status", "error")
+
+    if not result or status in ("error", "needs_review") or not action_type:
         return {
             "action": "unknown",
-            "product": "",
+            "product": (result or {}).get("product_name", ""),
+            "product_id": (result or {}).get("product_id"),
             "quantity": None,
             "unit": "",
             "confidence": "low",
             "trace": trace,
         }
 
+    qty = result.get("delta") if action_type == "add_stock" else result.get("new_stock")
     return {
-        **action,
-        "confidence": action.get("confidence", "medium"),
+        "action": action_type,           # "add_stock" | "set_stock"
+        "product": result.get("product_name", ""),
+        "product_id": result.get("product_id"),
+        "quantity": qty,
+        "unit": "",
+        "confidence": "high",
         "trace": trace,
     }
 
