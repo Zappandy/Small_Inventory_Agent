@@ -81,8 +81,8 @@ def draft_reorder_tool() -> str:
 @tool
 def parse_stock_command_tool(command: str) -> str:
     """Parse a natural language stock command (Telugu/English code-mixed) into a
-    proposed inventory action. Input examples: "Bingo అయిపోయింది",
-    "add Thums Up 12", "Lays Classic low". Returns a JSON action dict.
+    proposed inventory action. Input examples: "add Bun 12",
+    "set OBM stock 5", "Happy Happy low". Returns a JSON action dict.
 
     Args:
         command: The owner's raw stock command text.

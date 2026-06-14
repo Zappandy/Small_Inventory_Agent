@@ -44,10 +44,12 @@ class AgentUiIntegrationTest(unittest.TestCase):
     def test_command_handler_uses_react_agent(self) -> None:
         from dukaan_saathi.ui import gradio_app
 
-        action, trace, pending = gradio_app.handle_parse_command("Bingo అయిపోయింది")
+        action, trace, pending = gradio_app.handle_parse_command("add Bun 12")
 
         self.assertEqual(action["status"], "pending_approval")
-        self.assertEqual(action["product_id"], "bingo_c")
+        self.assertEqual(action["product_id"], "bun")
+        self.assertEqual(action["type"], "add_stock")
+        self.assertEqual(action["delta"], 12)
         self.assertEqual(pending, action)
         self.assertIn("Thought:", trace)
         self.assertIn("Action: parse_stock_command_tool", trace)
@@ -57,10 +59,12 @@ class AgentUiIntegrationTest(unittest.TestCase):
         from dukaan_saathi.ui import gradio_app
 
         with patch.object(gradio_app, "_react_agent", return_value=_BrokenReactAgent()):
-            action, trace, pending = gradio_app.handle_parse_command("Bingo అయిపోయింది")
+            action, trace, pending = gradio_app.handle_parse_command("add Bun 12")
 
         self.assertEqual(action["status"], "pending_approval")
-        self.assertEqual(action["product_id"], "bingo_c")
+        self.assertEqual(action["product_id"], "bun")
+        self.assertEqual(action["type"], "add_stock")
+        self.assertEqual(action["delta"], 12)
         self.assertEqual(pending, action)
         self.assertIn("ReAct agent unavailable; using deterministic parser", trace)
 

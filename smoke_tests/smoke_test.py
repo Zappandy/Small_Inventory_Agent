@@ -16,7 +16,7 @@ def main() -> None:
     print(f"rows: {len(get_inventory())}")
 
     print("\n=== Stock command ===")
-    action, trace = parse_stock_command("Bingo అయిపోయింది")
+    action, trace = parse_stock_command("add Bun 12")
     print(action)
     for line in trace:
         print("-", line)

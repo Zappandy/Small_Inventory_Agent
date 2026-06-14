@@ -2,8 +2,8 @@
 
 title: Dukaan Saathi — Small-Model Inventory Copilot
 emoji: 🛒
-colorFrom: blue
-colorTo: green
+colorFrom: green
+colorTo: yellow
 sdk: gradio
 sdk_version: 6.16.0
 app_file: app.py
@@ -48,15 +48,15 @@ Inventory is never updated directly from model output. Every write is approval-g
 
 ## What it does
 
-### Telugu/code-mixed stock commands
+### Stock commands
 
 Example:
 
 ```text
-Bingo అయిపోయింది
+add Bun 12
 ```
 
-The app detects that Bingo is out of stock and proposes an inventory update. The owner must approve before the stock value changes.
+The app detects that 12 buns arrived and proposes an inventory update. The owner must approve before the stock value changes.
 
 ### Receipt photo extraction
 
@@ -589,10 +589,10 @@ Use this flow for the hackathon demo video:
 ```text
 1. Open Dukaan Saathi.
 2. Show current inventory.
-3. Enter: Bingo అయిపోయింది
+3. Enter: add Bun 12
 4. Click Parse command.
 5. Approve the proposed stock update.
-6. Show reorder draft suggesting Bingo.
+6. Show the updated inventory and reorder draft.
 7. Upload a supplier receipt photo.
 8. MiniCPM-V extracts imperfect rows.
 9. Type or record this correction: first one Parle bulk, second one Bingo
@@ -606,7 +606,7 @@ Use this flow for the hackathon demo video:
 
 ## Local text-only receipt test
 
-You can test the correction flow without Modal by pasting this into the Receipt Import text box:
+You can test the correction flow without Modal by pasting this into the Bill Desk text box:
 
 ```text
 Mahalakshmi Marketing
@@ -619,7 +619,7 @@ Mahalakshmi Marketing
 Click:
 
 ```text
-Parse pasted/sample text
+Parse receipt text
 ```
 
 Then enter this correction command:
