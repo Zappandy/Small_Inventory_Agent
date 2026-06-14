@@ -1,0 +1,59 @@
+{# Seasonal — full festival forecast + brief #}
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <span class="card-title-icon">{{ icons.seasonal|safe }}</span>
+      Seasonal &amp; festival forecast
+    </h3>
+    <span class="badge badge-neutral">{{ festivals.count }} upcoming</span>
+  </div>
+  <div class="season-banner">
+    <div class="season-banner-icon" aria-hidden="true">{{ icons.seasonal|safe }}</div>
+    <div>
+      <div class="season-banner-name">{{ festivals.season }}</div>
+      <div class="season-banner-note">{{ festivals.note }}</div>
+    </div>
+  </div>
+  <div class="fest-grid" style="max-height:none">
+    {% if not festivals.cards %}
+      <div class="empty">
+        <div class="empty-icon" aria-hidden="true">{{ icons.seasonal|safe }}</div>
+        <div>No major festivals in the next 30 days</div>
+      </div>
+    {% endif %}
+    {% for f in festivals.cards %}
+      <div class="fest-card">
+        <div class="fest-head">
+          <div>
+            <div class="fest-name">{{ f.name }}</div>
+            <div class="fest-te" lang="te">{{ f.name_te }}</div>
+          </div>
+          <span class="fest-chip">{{ f.mult }}× demand</span>
+        </div>
+        <div class="fest-items">
+          <span class="fest-row-icon" aria-hidden="true">{{ icons.package|safe }}</span>
+          {{ f.items }}
+        </div>
+        <div class="fest-tip">
+          <span class="fest-row-icon" aria-hidden="true">{{ icons.sparkles|safe }}</span>
+          {{ f.tips }}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <span class="card-title-icon">{{ icons.sparkles|safe }}</span>
+      Full seasonal brief
+    </h3>
+  </div>
+  <div class="ai-card">
+    {{ brief|safe }}
+  </div>
+</div>

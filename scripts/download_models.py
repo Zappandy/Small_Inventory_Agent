@@ -52,7 +52,10 @@ def download_receipt_model() -> None:
         print(f"Receipt model already present: {RECEIPT_PATH}")
         return
 
-    hf_repo = os.getenv("HF_RECEIPT_GGUF_REPO", "").strip()
+    hf_repo = (
+        os.getenv("HF_RECEIPT_GGUF_REPO", "").strip()
+        or os.getenv("HF_RECEIPT_MODEL_REPO", "").strip()
+    )
     if hf_repo:
         _hf_download(
             repo_id=hf_repo,

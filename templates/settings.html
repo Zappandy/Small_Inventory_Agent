@@ -1,0 +1,51 @@
+{# Settings #}
+
+<form id="form-settings" onsubmit="event.preventDefault(); kirana.submitForm('form-settings','save_settings');">
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <span class="card-title-icon">{{ icons.store|safe }}</span>
+          Shop configuration
+        </h3>
+      </div>
+      <div class="field"><label class="label">Shop name</label><input class="input" name="shop_name" value="{{ s.shop_name }}"></div>
+      <div class="field"><label class="label">Owner name</label><input class="input" name="owner_name" value="{{ s.owner_name }}"></div>
+      <div class="field"><label class="label">Region</label><input class="input" name="region" value="{{ s.region }}"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <span class="card-title-icon">{{ icons.bell|safe }}</span>
+          Alert thresholds
+        </h3>
+      </div>
+      <div class="field"><label class="label">Low-stock warning (days of stock ahead)</label><input class="input" type="number" name="low_stock_days_ahead" value="{{ s.low_stock_days_ahead }}"></div>
+      <div class="field"><label class="label">Expiry warning (days ahead)</label><input class="input" type="number" name="expiry_warn_days" value="{{ s.expiry_warn_days }}"></div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <button type="submit" class="btn btn-primary btn-lg">
+    {{ icons.check|safe }} Save settings
+  </button>
+</form>
+
+<div class="spacer"></div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <span class="card-title-icon">{{ icons.sparkles|safe }}</span>
+      Model status
+    </h3>
+  </div>
+  <div class="alert {% if vision_online %}alert-success{% else %}alert-warn{% endif %}">
+    <span class="alert-icon" aria-hidden="true">
+      {% if vision_online %}{{ icons.check|safe }}{% else %}{{ icons.alert|safe }}{% endif %}
+    </span>
+    <div class="alert-body">
+      <div class="alert-title">{{ vision_status }}</div>
+      <div class="alert-sub">SLM (Qwen2.5-7B) text analysis runs in stub mode — wire it in <code>agent/nodes.py</code> at <code>SLM_INTEGRATION_POINT</code>.</div>
+    </div>
+  </div>
+</div>

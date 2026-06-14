@@ -4,11 +4,11 @@ set -euo pipefail
 source scripts/_env.sh
 
 DATASET_PATH="data/finetune/receipt_examples.jsonl"
-MAX_STEPS="30"
-EPOCHS="8"
+MAX_STEPS="-1"
+EPOCHS="30"
 SYNTHETIC_COUNT="0"
 SYNTHETIC_SEED="7"
-MODAL_SYNTHETIC_COUNT="0"
+MODAL_SYNTHETIC_COUNT="150"
 MODAL_SYNTHETIC_MODEL_ID="Qwen/Qwen2.5-1.5B-Instruct"
 RUN_ID="${TRACE_RUN_ID:-modal-finetune-$(date -u +%Y%m%dT%H%M%SZ)}"
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

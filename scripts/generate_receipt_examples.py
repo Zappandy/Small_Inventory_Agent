@@ -17,6 +17,8 @@ SUPPLIERS = [
             ("Bingo(C)", 870.0),
             ("Lays Classic", 480.0),
             ("Parle-G", 50.0),
+            ("Happy Happy", 960.0),
+            ("Kurkure", 540.0),
         ],
     },
     {
@@ -27,6 +29,8 @@ SUPPLIERS = [
             ("HAPPY HAPPY 27.5G(24P)*13", 4.464),
             ("LAYS CLASSIC 52G", 12.5),
             ("BINGO MAD ANGLES", 9.75),
+            ("KURKURE PUFFCORN 52G", 12.0),
+            ("BINGO TEDHE MEDHE 16G(20P)", 6.9),
         ],
     },
     {
@@ -35,8 +39,34 @@ SUPPLIERS = [
         "products": [
             ("Bun", 10.0),
             ("OBM", 9.5),
-            ("Item one", 28.0),
-            ("Milk bread", 32.0),
+            ("pav", 8.0),
+            ("brd", 32.0),
+            ("cake slc", 45.0),
+            ("Milk bread", 35.0),
+        ],
+    },
+    {
+        "name": "Vikram Agencies",
+        "document_type": "tabular invoice",
+        "products": [
+            ("Parle-G 250g", 180.0),
+            ("Bourbon Biscuit", 105.0),
+            ("Monaco Salted", 220.0),
+            ("Krack Jack", 150.0),
+            ("Hide & Seek", 195.0),
+            ("Sunfeast Dark Fantasy", 230.0),
+        ],
+    },
+    {
+        "name": "Krishna General Stores",
+        "document_type": "retail purchase note",
+        "products": [
+            ("Parle Monaco 200g", 75.0),
+            ("Krack Jack Biscuit", 60.0),
+            ("Hide & Seek Choco", 95.0),
+            ("Sunfeast YiPPee", 40.0),
+            ("Haldiram Bhujia", 120.0),
+            ("Lijjat Papad", 85.0),
         ],
     },
 ]
@@ -156,11 +186,78 @@ def _render_tally(
     return "\n".join(lines)
 
 
+def _render_tabular(
+    supplier: dict[str, Any],
+    invoice_no: str,
+    bill_date: date,
+    items: list[dict[str, Any]],
+    discount: float,
+) -> str:
+    subtotal = _money(sum(item["total"] for item in items))
+    net = _money(subtotal - discount)
+    lines = [
+        supplier["name"].upper(),
+        f"Invoice: {invoice_no}",
+        f"Date: {bill_date:%d-%m-%Y}",
+        "PARTY: VEERABHADRA STORES",
+        "",
+    ]
+    for index, item in enumerate(items, start=1):
+        qty = item["qty_units"] or item["qty_cases"]
+        lines.append(
+            f"{index}  {item['product_raw']}  QTY {qty}  RATE {item['unit_cost']}  AMT {item['total']}"
+        )
+    lines.extend(["", f"Gross: {subtotal}", f"Disc: {discount}", f"Net: {net}"])
+    return "\n".join(lines)
+
+
+def _render_retail(
+    supplier: dict[str, Any],
+    invoice_no: str,
+    bill_date: date,
+    items: list[dict[str, Any]],
+    discount: float,
+    rng: random.Random,
+) -> str:
+    subtotal = _money(sum(item["total"] for item in items))
+    disc_pct = round(discount / subtotal * 100) if subtotal else 0
+    net = _money(subtotal - discount)
+    lines = [
+        supplier["name"].upper(),
+        f"Bill No: {invoice_no}",
+        f"Date: {bill_date:%d/%m/%Y}",
+        "Customer: Veerabhadra",
+        "",
+    ]
+    unit_label = rng.choice(["pkt", "pc", "nos", "units"])
+    for item in items:
+        qty = item["qty_units"] or item["qty_cases"]
+        lines.append(
+            f"{item['product_raw']}  {qty} {unit_label}  @{item['unit_cost']}  {item['total']}"
+        )
+    lines.extend([
+        "",
+        f"Sub Total: {subtotal}",
+        f"Disc @ {disc_pct}%: {discount}",
+        f"Net Payable: {net}",
+    ])
+    return "\n".join(lines)
+
+
+def _compute_discount(doc_type: str, subtotal: float, rng: random.Random) -> float:
+    if doc_type == "tabular invoice":
+        return _money(subtotal * rng.choice([0.05, 0.08, 0.10]))
+    if doc_type == "retail purchase note":
+        return _money(subtotal * rng.choice([0.05, 0.08, 0.10]))
+    return 0.0
+
+
 def _render_input(
     supplier: dict[str, Any],
     invoice_no: str,
     bill_date: date,
     items: list[dict[str, Any]],
+    discount: float,
     rng: random.Random,
 ) -> str:
     doc_type = supplier["document_type"]
@@ -168,6 +265,10 @@ def _render_input(
         return _render_printed(supplier, invoice_no, bill_date, items, rng)
     if doc_type == "handwritten tally note":
         return _render_tally(supplier, invoice_no, bill_date, items, rng)
+    if doc_type == "tabular invoice":
+        return _render_tabular(supplier, invoice_no, bill_date, items, discount)
+    if doc_type == "retail purchase note":
+        return _render_retail(supplier, invoice_no, bill_date, items, discount, rng)
     return _render_handwritten(supplier, invoice_no, bill_date, items, rng)
 
 
@@ -181,20 +282,22 @@ def generate_examples(count: int, seed: int) -> list[dict[str, str]]:
         invoice_no = str(3000 + index + rng.randint(0, 500))
         items = _sample_items(rng, supplier)
         subtotal = _money(sum(item["total"] for item in items))
-        gst = _money(subtotal * 0.05) if supplier["document_type"] == "printed tax invoice" else 0.0
+        doc_type = supplier["document_type"]
+        gst = _money(subtotal * 0.05) if doc_type == "printed tax invoice" else 0.0
+        discount = _compute_discount(doc_type, subtotal, rng)
         parsed = {
             "supplier": supplier["name"],
-            "invoice_no": invoice_no if supplier["document_type"] != "handwritten tally note" else None,
+            "invoice_no": invoice_no if doc_type != "handwritten tally note" else None,
             "date": bill_date.isoformat(),
             "items": items,
             "subtotal": subtotal,
-            "discount": 0.0,
+            "discount": discount,
             "gst": gst,
-            "net_total": _money(subtotal + gst),
+            "net_total": _money(subtotal - discount + gst),
         }
         examples.append(
             {
-                "input": _render_input(supplier, invoice_no, bill_date, items, rng),
+                "input": _render_input(supplier, invoice_no, bill_date, items, discount, rng),
                 "output": json.dumps(parsed, ensure_ascii=False),
             }
         )
