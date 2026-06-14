@@ -140,113 +140,42 @@ def _seed_default_settings() -> None:
 def _seed_kirana_demo_products() -> None:
     """Idempotently add friendlier demo products for stakeholder demos."""
     demo_products = [
-        {
-            "name": "Tomato",
-            "name_local": "టమాట",
-            "category": "Fruits & Vegetables",
-            "qty": 18,
-            "unit": "kg",
-            "min_stock": 8,
-            "buy_price": 28,
-            "sell_price": 40,
-            "supplier": "Fresh Mandi Supplier",
-        },
-        {
-            "name": "Onion",
-            "name_local": "ఉల్లిపాయ",
-            "category": "Fruits & Vegetables",
-            "qty": 25,
-            "unit": "kg",
-            "min_stock": 10,
-            "buy_price": 22,
-            "sell_price": 34,
-            "supplier": "Fresh Mandi Supplier",
-        },
-        {
-            "name": "Potato",
-            "name_local": "బంగాళాదుంప",
-            "category": "Fruits & Vegetables",
-            "qty": 20,
-            "unit": "kg",
-            "min_stock": 10,
-            "buy_price": 20,
-            "sell_price": 32,
-            "supplier": "Fresh Mandi Supplier",
-        },
-        {
-            "name": "Banana",
-            "name_local": "అరటి పండు",
-            "category": "Fruits & Vegetables",
-            "qty": 36,
-            "unit": "piece",
-            "min_stock": 18,
-            "buy_price": 4,
-            "sell_price": 7,
-            "supplier": "Fresh Mandi Supplier",
-        },
-        {
-            "name": "Apple",
-            "name_local": "ఆపిల్",
-            "category": "Fruits & Vegetables",
-            "qty": 24,
-            "unit": "piece",
-            "min_stock": 12,
-            "buy_price": 18,
-            "sell_price": 30,
-            "supplier": "Fresh Mandi Supplier",
-        },
-        {
-            "name": "Coriander",
-            "name_local": "కొత్తిమీర",
-            "category": "Fruits & Vegetables",
-            "qty": 15,
-            "unit": "bunch",
-            "min_stock": 8,
-            "buy_price": 5,
-            "sell_price": 10,
-            "supplier": "Fresh Mandi Supplier",
-        },
-        {
-            "name": "Milk 500ml",
-            "name_local": "పాలు 500ml",
-            "category": "Dairy",
-            "qty": 30,
-            "unit": "packet",
-            "min_stock": 12,
-            "buy_price": 24,
-            "sell_price": 28,
-            "supplier": "Daily Dairy Distributor",
-        },
-        {
-            "name": "Eggs",
-            "name_local": "గుడ్లు",
-            "category": "Dairy",
-            "qty": 60,
-            "unit": "piece",
-            "min_stock": 24,
-            "buy_price": 5,
-            "sell_price": 7,
-            "supplier": "Daily Dairy Distributor",
-        },
+        ("Tomato", "టమాట", "Fruits & Vegetables", 18, "kg", 8, 28, 40, "Fresh Mandi Supplier"),
+        ("Onion", "ఉల్లిపాయ", "Fruits & Vegetables", 25, "kg", 10, 22, 34, "Fresh Mandi Supplier"),
+        ("Potato", "బంగాళాదుంప", "Fruits & Vegetables", 20, "kg", 10, 20, 32, "Fresh Mandi Supplier"),
+        ("Banana", "అరటి పండు", "Fruits & Vegetables", 36, "piece", 18, 4, 7, "Fresh Mandi Supplier"),
+        ("Apple", "ఆపిల్", "Fruits & Vegetables", 24, "piece", 12, 18, 30, "Fresh Mandi Supplier"),
+        ("Coriander", "కొత్తిమీర", "Fruits & Vegetables", 15, "bunch", 8, 5, 10, "Fresh Mandi Supplier"),
+        ("Green Chilli", "పచ్చి మిర్చి", "Fruits & Vegetables", 6, "kg", 3, 45, 70, "Fresh Mandi Supplier"),
+
+        ("Milk 500ml", "పాలు 500ml", "Dairy", 30, "packet", 12, 24, 28, "Daily Dairy Distributor"),
+        ("Curd 500g", "పెరుగు 500g", "Dairy", 18, "packet", 8, 28, 35, "Daily Dairy Distributor"),
+        ("Eggs", "గుడ్లు", "Dairy", 60, "piece", 24, 5, 7, "Daily Dairy Distributor"),
+
+        ("Toor Dal", "కందిపప్పు", "Other", 14, "kg", 6, 118, 145, "Sri Lakshmi Traders"),
+        ("Basmati Rice", "బాస్మతి బియ్యం", "Other", 22, "kg", 10, 82, 105, "Sri Lakshmi Traders"),
+        ("Sunflower Oil 1L", "సన్‌ఫ్లవర్ ఆయిల్ 1L", "Other", 16, "bottle", 8, 118, 145, "Sri Lakshmi Traders"),
+        ("Maggi 70g", "మ్యాగీ 70g", "Other", 40, "packet", 20, 12, 14, "Sri Venkateshwara Marketing"),
     ]
 
-    for item in demo_products:
+    for name, name_local, category, quantity, unit, min_stock, buy_price, sell_price, supplier in demo_products:
+        if find_by_name(name):
+            continue
+
         try:
-            if find_by_name(item["name"]):
-                continue
             add_product(
-                item["name"],
-                item["category"],
-                item["qty"],
-                item["unit"],
-                item["min_stock"],
-                item["buy_price"],
-                item["sell_price"],
-                name_local=item["name_local"],
-                supplier=item["supplier"],
+                name,
+                category,
+                quantity,
+                unit,
+                min_stock,
+                buy_price,
+                sell_price,
+                name_local=name_local,
+                supplier=supplier,
             )
         except Exception:
-            # Demo seeding must never prevent app startup.
+            # Demo seeding must never block app startup.
             continue
 
 
