@@ -922,7 +922,8 @@ def handle_apply_receipt_correction(receipt_df, command_text: str):
 
 def handle_approve_receipt(receipt_df):
     message, trace = approve_receipt_rows(receipt_df)
-    return inventory_df(), message, "\n".join(trace)
+    updated_inventory = inventory_df()
+    return updated_inventory, updated_inventory, message, "\n".join(trace)
 
 
 def handle_draft_reorder():
@@ -1054,7 +1055,8 @@ def build_demo() -> gr.Blocks:
                             <ol class="howto-list">
                                 <li>Review each editable row, especially product match, quantity, price, and warning columns.</li>
                                 <li>Use the apply column to skip rows that should not affect inventory.</li>
-                                <li>Click <strong>Approve receipt rows</strong> only when the table is correct.</li>
+                                <li>Click <strong>Approve rows and update inventory</strong> only when the table is correct.</li>
+                                <li>Confirm the changed stock in <strong>Inventory after approval</strong>.</li>
                                 <li class="note">Approval is the only step that writes receipt changes to inventory.</li>
                             </ol>
                             </div>
@@ -1229,10 +1231,18 @@ def build_demo() -> gr.Blocks:
                             elem_classes=["trace-box"],
                         )
                         approve_receipt_btn = gr.Button(
-                            bi("Approve receipt rows"),
+                            bi("Approve rows and update inventory"),
                             variant="primary",
                         )
                         receipt_result = gr.Textbox(label=bi("Approval result"))
+                        receipt_inventory_snapshot = gr.Dataframe(
+                            value=inventory_df,
+                            headers=INVENTORY_COLUMNS,
+                            interactive=False,
+                            wrap=True,
+                            label=bi("Inventory after approval"),
+                            elem_classes=["inventory-table"],
+                        )
 
                         load_sample_btn.click(
                             fn=handle_load_sample_receipt,
@@ -1263,7 +1273,12 @@ def build_demo() -> gr.Blocks:
                         approve_receipt_btn.click(
                             fn=handle_approve_receipt,
                             inputs=receipt_table,
-                            outputs=[inventory_table, receipt_result, receipt_trace],
+                            outputs=[
+                                inventory_table,
+                                receipt_inventory_snapshot,
+                                receipt_result,
+                                receipt_trace,
+                            ],
                         )
 
                     with gr.Tab(bi("Reorder draft"), id="reorder-draft"):

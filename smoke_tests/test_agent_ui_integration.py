@@ -94,6 +94,24 @@ class AgentUiIntegrationTest(unittest.TestCase):
         self.assertIn("Configured receipt backend (hf_inference) failed", trace)
         self.assertIn("Fallback parser produced editable rows", trace)
 
+    def test_approved_receipt_rows_update_inventory_snapshot(self) -> None:
+        from dukaan_saathi.ui import gradio_app
+
+        raw_text = "Mahalakshmi Marketing\nBingo 4 X 870 = 3480"
+        with patch.object(gradio_app.config, "RECEIPT_BACKEND", "deterministic"):
+            with patch.object(gradio_app, "_react_agent", return_value=_BrokenReactAgent()):
+                receipt_df, _trace = gradio_app.handle_parse_receipt(None, raw_text)
+
+        main_inventory, bill_inventory, message, trace = gradio_app.handle_approve_receipt(receipt_df)
+
+        self.assertIn("Approved 1 rows", message)
+        self.assertIn("Updated Bingo (C)", trace)
+
+        main_bingo = main_inventory.loc[main_inventory["product_id"] == "bingo_c"].iloc[0]
+        bill_bingo = bill_inventory.loc[bill_inventory["product_id"] == "bingo_c"].iloc[0]
+        self.assertEqual(main_bingo["current_stock"], bill_bingo["current_stock"])
+        self.assertEqual(main_bingo["current_stock"], 5)
+
     def test_dashboard_stats_reflect_seed_inventory(self) -> None:
         from dukaan_saathi.ui import gradio_app
 
