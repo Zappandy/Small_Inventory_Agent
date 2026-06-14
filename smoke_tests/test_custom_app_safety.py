@@ -193,6 +193,48 @@ class CustomAppSafetyTest(unittest.TestCase):
         self.assertEqual(transcript, "")
         self.assertTrue(any("Could not parse ASR response JSON" in line for line in trace))
 
+    def test_modal_ocr_success_returns_raw_text_and_model_name(self) -> None:
+        from dukaan_saathi.integrations.modal_receipt import _extract_receipt_result_with_modal
+
+        class _GoodResponse:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self):
+                return {"text": "Bingo 4 units\nParle bulk 2 units", "model": "minicpm-v"}
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg") as image:
+            image.write(b"not really an image")
+            image.flush()
+            with patch.dict(os.environ, {"MODAL_RECEIPT_ENDPOINT": "https://example.test/ocr"}):
+                with patch("dukaan_saathi.integrations.modal_receipt.requests.post", return_value=_GoodResponse()):
+                    result = _extract_receipt_result_with_modal(image.name)
+
+        self.assertIn("Bingo", result.raw_text)
+        self.assertEqual(result.model_name, "minicpm-v")
+        self.assertFalse(any("error" in m.lower() or "failed" in m.lower() for m in result.trace_messages))
+
+    def test_modal_speech_success_returns_transcript(self) -> None:
+        from dukaan_saathi.integrations.speech import transcribe_audio
+
+        class _GoodResponse:
+            status_code = 200
+            text = '{"text": "add Bun 12", "model": "distil-whisper"}'
+
+            def json(self):
+                return {"text": "add Bun 12", "model": "distil-whisper"}
+
+        with tempfile.NamedTemporaryFile(suffix=".wav") as audio:
+            audio.write(b"not really audio")
+            audio.flush()
+            with patch.dict(os.environ, {"MODAL_SPEECH_ENDPOINT": "https://example.test/asr"}):
+                with patch("dukaan_saathi.integrations.speech.requests.post", return_value=_GoodResponse()):
+                    transcript, trace = transcribe_audio(audio.name)
+
+        self.assertEqual(transcript, "add Bun 12")
+        self.assertTrue(any("add Bun 12" in line for line in trace))
+        self.assertTrue(any("distil-whisper" in line for line in trace))
+
 
 if __name__ == "__main__":
     unittest.main()

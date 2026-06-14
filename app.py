@@ -23,6 +23,7 @@ from dukaan_saathi.agent.react_agent import get_react_agent
 from dukaan_saathi.integrations.modal_receipt import _extract_receipt_result_with_modal
 from dukaan_saathi.integrations.speech import transcribe_audio
 from dukaan_saathi.parsers.receipt_text import parse_receipt_text
+from dukaan_saathi.traceability import new_run_id, utc_now_iso, write_manifest
 
 db.init_db()
 
@@ -144,6 +145,33 @@ def _service_status() -> dict:
             (os.getenv("MODAL_SPEECH_ENDPOINT") or os.getenv("SPEECH_ASR_ENDPOINT") or "").strip()
         ),
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Traceability helper
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _record_approval_manifest(source_doc: str, result: dict) -> None:
+    """Write a lightweight approval manifest for FastAPI-path stock writes."""
+    ts = utc_now_iso()
+    try:
+        write_manifest({
+            "run_id": new_run_id("inventory-approval"),
+            "kind": "inventory-approval",
+            "status": "succeeded",
+            "started_at": ts,
+            "ended_at": ts,
+            "metadata": {
+                "approval_type": source_doc,
+                "product_id": result.get("product_id", ""),
+                "product_name": result.get("product_name", ""),
+                "previous_stock": result.get("previous_stock"),
+                "new_stock": result.get("new_stock"),
+                "delta": result.get("delta"),
+            },
+        })
+    except Exception:
+        pass  # manifest writes must never break the approval flow
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -308,7 +336,8 @@ def _h_apply_receipt_row(state, params):
 
     pid = params.get("matched_product_id")
     if pid:
-        db.adjust_stock(pid, qty_f, mode="add")
+        result = db.adjust_stock(pid, qty_f, mode="add")
+        _record_approval_manifest("receipt_row", result)
         p = db.get_product(pid)
         name = p["name"] if p else pid
         msg = f"Added {qty_f:g} to {name}"
@@ -371,7 +400,8 @@ def _h_voice_apply(state, params):
         return state, "danger|Invalid quantity"
 
     mode = "add" if action == "add_stock" else "set"
-    db.adjust_stock(pid, qty_f, mode=mode)
+    result = db.adjust_stock(pid, qty_f, mode=mode)
+    _record_approval_manifest("voice_command", result)
     p = db.get_product(pid)
     name = p["name"] if p else params.get("product", "product")
     applied = f"Added {qty_f:g} to {name}" if mode == "add" else f"Set {name} stock to {qty_f:g}"
