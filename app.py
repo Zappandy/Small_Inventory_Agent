@@ -24,6 +24,7 @@ from dukaan_saathi.integrations.modal_receipt import _extract_receipt_result_wit
 from dukaan_saathi.integrations.speech import transcribe_audio
 from dukaan_saathi.parsers.receipt_text import parse_receipt_text
 from dukaan_saathi.traceability import new_run_id, utc_now_iso, write_manifest
+from dukaan_saathi.integrations.hub_traces import push_trace
 
 db.init_db()
 
@@ -351,6 +352,15 @@ def _h_apply_receipt_row(state, params):
         )
         msg = f"Created '{name}' with {qty_f:g} units"
 
+    photo_result = state.get("photo_result") or {}
+    push_trace(
+        input_type="photo",
+        raw_command=name,
+        trace=photo_result.get("trace") or [],
+        action="add_stock",
+        product=name,
+        quantity=qty_f,
+    )
     state["page"] = "add"; state["active_method"] = "photo"
     return state, f"success|{msg}"
 
@@ -408,6 +418,14 @@ def _h_voice_apply(state, params):
     p = db.get_product(pid)
     name = p["name"] if p else params.get("product", "product")
     applied = f"Added {qty_f:g} to {name}" if mode == "add" else f"Set {name} stock to {qty_f:g}"
+    push_trace(
+        input_type="voice",
+        raw_command=params.get("raw_command") or params.get("product", ""),
+        trace=params.get("trace") or [],
+        action=action,
+        product=name,
+        quantity=qty_f,
+    )
 
     state["voice_result"] = {
         "action": action,
