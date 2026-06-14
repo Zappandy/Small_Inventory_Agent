@@ -20,17 +20,17 @@ preserved.
 from __future__ import annotations
 
 import datetime as _dt
+import math
 import sqlite3
 import uuid
 from typing import Any
 
+from dukaan_saathi.services.inventory import apply_owner_stock_delta, set_owner_stock
 from dukaan_saathi.storage import (
     SCHEMA_SQL,
-    apply_stock_delta,
     find_product as _dukaan_find_product,
     get_conn,
     init_db as _dukaan_init_db,
-    set_product_stock,
 )
 
 
@@ -183,6 +183,13 @@ def _new_id() -> str:
     return str(uuid.uuid4())
 
 
+def _round_stock_quantity(value: float) -> int:
+    value_f = float(value or 0)
+    if value_f >= 0:
+        return int(math.floor(value_f + 0.5))
+    return int(math.ceil(value_f - 0.5))
+
+
 def _today() -> str:
     return _dt.date.today().isoformat()
 
@@ -326,16 +333,16 @@ def get_summary() -> dict[str, Any]:
 def adjust_stock(product_id: Any, delta: float, mode: str = "add") -> dict[str, Any]:
     pid = str(product_id)
     if mode == "set":
-        return set_product_stock(
+        return set_owner_stock(
             product_id=pid,
-            new_stock=int(delta),
+            new_stock=float(delta),
             event_type="manual",
             source_doc="ui_adjustment",
             note="Owner set absolute stock from UI",
         )
-    return apply_stock_delta(
+    return apply_owner_stock_delta(
         product_id=pid,
-        delta=int(delta),
+        delta=float(delta),
         event_type="manual",
         source_doc="ui_adjustment",
         note="Owner added stock from UI",
@@ -344,9 +351,9 @@ def adjust_stock(product_id: Any, delta: float, mode: str = "add") -> dict[str, 
 
 def record_sale(product_id: Any, qty: float, price: float) -> None:
     pid = str(product_id)
-    apply_stock_delta(
+    apply_owner_stock_delta(
         product_id=pid,
-        delta=-int(qty),
+        delta=-float(qty),
         event_type="sale",
         source_doc="pos",
         note=f"Sale @ {price}/unit",
@@ -395,17 +402,17 @@ def add_product(
             """,
             (
                 pid, name, supplier_id, unit,
-                int(min_stock or 0),
-                max(int(min_stock or 0) * 3, 10),
+                _round_stock_quantity(min_stock or 0),
+                max(_round_stock_quantity(min_stock or 0) * 3, 10),
                 float(buy_price or 0),
                 name_local, category or "Other", float(sell_price or 0), expiry_date,
             ),
         )
 
     if quantity and float(quantity) > 0:
-        apply_stock_delta(
+        apply_owner_stock_delta(
             product_id=pid,
-            delta=int(float(quantity)),
+            delta=float(quantity),
             event_type="initial",
             source_doc="ui_add",
             unit_cost=float(buy_price or 0),

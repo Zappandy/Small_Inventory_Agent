@@ -1,5 +1,17 @@
 {# Analytics — category mix + top sellers (visual chart style) #}
 
+<div class="row-flex between" style="margin-bottom:14px">
+  <div class="muted">Sales window</div>
+  <div class="pill-tabs" data-tab-group="analytics">
+    {% for days in analytics_ranges %}
+      <button class="pill-tab {% if days == analytics_days %}active{% endif %}"
+              onclick="kirana.quickAction('filter_analytics', {days: {{ days }}})">
+        {{ days }}d
+      </button>
+    {% endfor %}
+  </div>
+</div>
+
 {# ── Headline metrics ──────────────────────────────────────── #}
 <div class="kpi-grid kpi-grid-3">
   {% for m in metrics %}
@@ -65,7 +77,7 @@
     <div class="card-header">
       <h3 class="card-title">
         <span class="card-title-icon">{{ icon_trophy|safe }}</span>
-        Top sellers · last 30 days
+        Top sellers · last {{ analytics_days }} days
       </h3>
       {% if sellers.total_revenue %}
         <span class="badge badge-success">₹{{ sellers.total_revenue_fmt }}</span>

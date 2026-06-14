@@ -7,6 +7,7 @@ UI shell ported from kirana-ai; storage and parsers come from dukaan_saathi.
 import json
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 
 from gradio import Server
@@ -18,6 +19,7 @@ import kirana_db as db
 import ui as ui_render
 from frontend_backend import run_analysis, run_command_parse
 from dukaan_saathi import config
+from dukaan_saathi.agent.react_agent import get_react_agent
 from dukaan_saathi.integrations.modal_receipt import _extract_receipt_result_with_modal
 from dukaan_saathi.integrations.speech import transcribe_audio
 from dukaan_saathi.parsers.receipt_text import parse_receipt_text
@@ -30,6 +32,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 INITIAL_STATE = {
     "page":           "dashboard",
     "filters":        {"q": "", "category": "All", "status": "All"},
+    "analytics_days": 30,
     "orders_filter":  "pending",
     "active_method":  "manual",
     "photo_result":   None,
@@ -57,6 +60,75 @@ def _parse_receipt_with_configured_backend(raw_text: str):
         return parse_receipt_via_llm(raw_text)
 
     return parse_receipt_text(raw_text)
+
+
+def _match_receipt_rows(rows: list[dict], trace: list[str] | None = None) -> list[dict]:
+    matched_rows = []
+    trace = trace if trace is not None else []
+    for row in rows or []:
+        next_row = dict(row)
+        if next_row.get("matched_product_id"):
+            matched_rows.append(next_row)
+            continue
+
+        product_raw = (next_row.get("product_raw") or "").strip()
+        if not product_raw:
+            matched_rows.append(next_row)
+            continue
+
+        matches = db.find_by_name(product_raw)
+        if matches:
+            match = matches[0]
+            next_row["matched_product_id"] = match["id"]
+            next_row["matched_product_name"] = match["name"]
+            trace.append(f"[receipt_match] Matched '{product_raw}' to {match['name']}")
+        else:
+            trace.append(f"[receipt_match] No catalog match for '{product_raw}'")
+        matched_rows.append(next_row)
+    return matched_rows
+
+
+def _find_order(order_id: str) -> dict | None:
+    for order in db.get_all_orders(limit=500):
+        if str(order.get("id")) == str(order_id):
+            return order
+    return None
+
+
+def _extract_receipt_direct(tmp_path: str) -> tuple[list[dict], list[str], str, str]:
+    ocr_result = _extract_receipt_result_with_modal(tmp_path)
+    trace = list(getattr(ocr_result, "trace", []) or [])
+    raw_text = getattr(ocr_result, "raw_text", "") or ""
+    model = getattr(ocr_result, "model", "unknown")
+    if not trace:
+        trace = [
+            f"[receipt_ocr] OCR model: {model}",
+            f"[receipt_ocr] Raw text length: {len(raw_text)}",
+        ]
+
+    if not raw_text.strip():
+        return [], trace, raw_text, model
+
+    rows, parse_trace, raw_text, _ = _parse_receipt_rows_from_text(raw_text)
+    trace.extend(parse_trace)
+    return rows, trace, raw_text, model
+
+
+def _parse_receipt_rows_from_text(
+    raw_text: str,
+    backend_parser=_parse_receipt_with_configured_backend,
+) -> tuple[list[dict], list[str], str, str]:
+    trace: list[str] = []
+    try:
+        rows, parser_trace = backend_parser(raw_text)
+        trace.extend(parser_trace)
+    except Exception as exc:
+        trace.append(f"[receipt_parser] Configured backend failed: {exc}")
+        trace.append("[receipt_parser] Falling back to deterministic parser.")
+        rows, parser_trace = parse_receipt_text(raw_text)
+        trace.extend(parser_trace)
+    rows = _match_receipt_rows(rows, trace)
+    return rows, trace, raw_text, "text"
 
 
 def _service_status() -> dict:
@@ -114,18 +186,39 @@ def _h_add_to_order(state, params):
     except (TypeError, ValueError):
         return state, "danger|Could not queue this reorder"
     p = db.get_product(pid)
-    state["page"] = "dashboard"
-    name = p["name"] if p else f"product {pid}"
-    unit = p["unit"] if p else ""
-    return state, f"success|Queued {qty:g} {unit} of {name} for the next order"
+    if not p:
+        state["page"] = "dashboard"
+        return state, "danger|Product not found"
+    db.insert_orders([{
+        "product_id": pid,
+        "product_name": p["name"],
+        "qty_needed": qty,
+        "unit": p["unit"],
+        "reason": "Manual reorder from dashboard",
+        "ai_confidence": 0.95,
+    }])
+    state["page"] = "orders"
+    state["orders_filter"] = "pending"
+    return state, f"success|Reorder queued for {p['name']}"
 
 
 def _h_offer_to_route(state, params):
     pid = params.get("pid")
     p = db.get_product(pid)
-    state["page"] = "dashboard"
-    name = p["name"] if p else f"product {pid}"
-    return state, f"success|Liquidation offer drafted for {name}"
+    if not p:
+        state["page"] = "dashboard"
+        return state, "danger|Product not found"
+    db.insert_orders([{
+        "product_id": pid,
+        "product_name": p["name"],
+        "qty_needed": p["quantity"],
+        "unit": p["unit"],
+        "reason": "Liquidation route offer for near-expiry or overstock item",
+        "ai_confidence": 0.7,
+    }])
+    state["page"] = "orders"
+    state["orders_filter"] = "pending"
+    return state, f"success|Liquidation offer logged for {p['name']}"
 
 
 def _h_plan_festival_stock(state, params):
@@ -238,33 +331,65 @@ def _h_voice_command(state, params):
     if not text:
         return state, "warn|Please type a command"
     parsed = run_command_parse(text)
-    applied = None
     action = parsed.get("action", "unknown")
     pid = parsed.get("product_id")
     qty = parsed.get("quantity")
-
-    if action == "add_stock" and pid and qty:
-        db.adjust_stock(pid, float(qty), mode="add")
-        p = db.get_product(pid)
-        name = p["name"] if p else parsed.get("product", "product")
-        applied = f"Added {qty} to {name}"
-    elif action == "set_stock" and pid and qty is not None:
-        db.adjust_stock(pid, float(qty), mode="set")
-        p = db.get_product(pid)
-        name = p["name"] if p else parsed.get("product", "product")
-        applied = f"Set {name} stock to {qty}"
+    needs_approval = action in {"add_stock", "set_stock"} and bool(pid) and qty is not None
 
     state["voice_result"] = {
         "action":     action,
         "product":    parsed.get("product", ""),
+        "product_id": pid,
         "quantity":   qty,
         "unit":       parsed.get("unit", ""),
         "confidence": parsed.get("confidence", "low"),
-        "applied":    applied,
+        "trace":      parsed.get("trace", []),
+        "applied":    None,
+        "needs_approval": needs_approval,
     }
     state["page"] = "add"
     state["active_method"] = "voice"
-    return state, ("success|" + applied) if applied else "info|Command parsed — review above"
+    if needs_approval:
+        return state, "info|Command parsed — approve before stock changes"
+    return state, "warn|Could not parse a stock update"
+
+
+def _h_voice_apply(state, params):
+    action = params.get("action")
+    pid = params.get("product_id")
+    qty = params.get("quantity")
+    if action not in {"add_stock", "set_stock"} or not pid or qty is None:
+        state["page"] = "add"
+        state["active_method"] = "voice"
+        return state, "danger|No valid parsed command to apply"
+
+    try:
+        qty_f = float(qty)
+    except (TypeError, ValueError):
+        state["page"] = "add"
+        state["active_method"] = "voice"
+        return state, "danger|Invalid quantity"
+
+    mode = "add" if action == "add_stock" else "set"
+    db.adjust_stock(pid, qty_f, mode=mode)
+    p = db.get_product(pid)
+    name = p["name"] if p else params.get("product", "product")
+    applied = f"Added {qty_f:g} to {name}" if mode == "add" else f"Set {name} stock to {qty_f:g}"
+
+    state["voice_result"] = {
+        "action": action,
+        "product": name,
+        "product_id": pid,
+        "quantity": qty_f,
+        "unit": params.get("unit", ""),
+        "confidence": params.get("confidence", "high"),
+        "trace": params.get("trace", []),
+        "applied": applied,
+        "needs_approval": False,
+    }
+    state["page"] = "add"
+    state["active_method"] = "voice"
+    return state, f"success|{applied}"
 
 
 def _h_generate_orders(state, _params):
@@ -281,6 +406,16 @@ def _h_filter_orders(state, params):
     return state, ""
 
 
+def _h_filter_analytics(state, params):
+    try:
+        days = int(params.get("days", 30))
+    except (TypeError, ValueError):
+        days = 30
+    state["analytics_days"] = days if days in {7, 30, 90} else 30
+    state["page"] = "analytics"
+    return state, ""
+
+
 def _h_approve_order(state, params):
     oid = params.get("oid")
     if not oid:
@@ -288,6 +423,28 @@ def _h_approve_order(state, params):
     db.update_order_status(oid, "approved")
     state["page"] = "orders"
     return state, f"success|Order #{oid} approved"
+
+
+def _h_mark_order_received(state, params):
+    oid = params.get("oid")
+    if not oid:
+        return state, "danger|Invalid order ID"
+    order = _find_order(str(oid))
+    if not order:
+        state["page"] = "orders"
+        return state, "danger|Order not found"
+    if order.get("status") != "approved":
+        state["page"] = "orders"
+        return state, "warn|Approve the order before marking it received"
+    if not order.get("product_id"):
+        state["page"] = "orders"
+        return state, "danger|Order has no product match"
+
+    db.adjust_stock(order["product_id"], float(order.get("qty_needed") or 0), mode="add")
+    db.update_order_status(oid, "received")
+    state["page"] = "orders"
+    state["orders_filter"] = "received"
+    return state, f"success|Order #{oid} received and stock updated"
 
 
 def _h_reject_order(state, params):
@@ -322,9 +479,12 @@ HANDLERS = {
     "add_product":      _h_add_product,
     "apply_receipt_row": _h_apply_receipt_row,
     "voice_command":    _h_voice_command,
+    "voice_apply":      _h_voice_apply,
     "generate_orders":  _h_generate_orders,
     "filter_orders":    _h_filter_orders,
+    "filter_analytics": _h_filter_analytics,
     "approve_order":    _h_approve_order,
+    "mark_order_received": _h_mark_order_received,
     "reject_order":     _h_reject_order,
     "save_settings":    _h_save_settings,
 }
@@ -392,40 +552,30 @@ async def api_photo(state: str = Form(...), image: UploadFile = File(...)) -> di
         shutil.copyfileobj(image.file, tmp)
         tmp_path = tmp.name
 
-    ocr_result = _extract_receipt_result_with_modal(tmp_path)
-    trace = list(getattr(ocr_result, "trace", []) or [])
-    if not trace:
-        trace = [
-            f"[receipt_ocr] OCR model: {getattr(ocr_result, 'model', 'unknown')}",
-            f"[receipt_ocr] Raw text length: {len(getattr(ocr_result, 'raw_text', '') or '')}",
-        ]
-
-    if (getattr(ocr_result, 'raw_text', '') or '').strip():
-        try:
-            rows, parser_trace = _parse_receipt_with_configured_backend(getattr(ocr_result, 'raw_text', '') or '')
-            trace.extend(parser_trace)
-        except Exception as exc:
-            trace.append(f"[receipt_parser] Configured backend failed: {exc}")
-            trace.append("[receipt_parser] Falling back to deterministic parser.")
-            rows, parser_trace = parse_receipt_text(getattr(ocr_result, 'raw_text', '') or '')
-            trace.extend(parser_trace)
-    else:
-        rows = []
+    try:
+        react_result = get_react_agent().extract_receipt_image(tmp_path)
+        trace = list(react_result.trace)
+        rows = _match_receipt_rows(react_result.receipt_rows or [], trace)
+        raw_text = react_result.raw_text or ""
+        ocr_model = "react_agent"
+    except Exception as exc:
+        rows, trace, raw_text, ocr_model = _extract_receipt_direct(tmp_path)
+        trace.insert(0, f"[react_agent] Unavailable; used direct receipt path: {exc}")
 
     if rows:
         result = {
             "rows": rows,
             "trace": trace,
-            "raw_text": getattr(ocr_result, "raw_text", "") or "",
-            "ocr_model": getattr(ocr_result, "model", "unknown"),
+            "raw_text": raw_text,
+            "ocr_model": ocr_model,
         }
         toast = f"info|Receipt parsed · {len(rows)} row(s)"
     else:
         result = {
             "error": trace[-1] if trace else "No rows extracted",
             "trace": trace,
-            "raw_text": getattr(ocr_result, "raw_text", "") or "",
-            "ocr_model": getattr(ocr_result, "model", "unknown"),
+            "raw_text": raw_text,
+            "ocr_model": ocr_model,
         }
         toast = f"warn|{result['error']}"
 
@@ -462,6 +612,33 @@ async def api_speech(state: str = Form(...), audio: UploadFile = File(...)) -> d
 @server.get("/api/status")
 def api_status() -> dict:
     return _service_status()
+
+
+@server.get("/api/warm")
+def api_warm() -> dict:
+    import os
+    import requests
+
+    endpoints = [
+        os.getenv("MODAL_RECEIPT_ENDPOINT", "").strip(),
+        os.getenv("MINICPM_RECEIPT_ENDPOINT", "").strip(),
+        os.getenv("MODAL_RECEIPT_LLM_ENDPOINT", "").strip(),
+        os.getenv("MODAL_SPEECH_ENDPOINT", "").strip(),
+        os.getenv("SPEECH_ASR_ENDPOINT", "").strip(),
+    ]
+    warmed = 0
+
+    def _ping(url: str) -> None:
+        try:
+            requests.head(url, timeout=5)
+        except Exception:
+            pass
+
+    for endpoint in sorted({e for e in endpoints if e}):
+        warmed += 1
+        threading.Thread(target=_ping, args=(endpoint,), daemon=True).start()
+
+    return {"ok": True, "warmed": warmed}
 
 
 if __name__ == "__main__":

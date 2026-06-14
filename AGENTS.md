@@ -54,10 +54,16 @@ Important files:
 - `dukaan_saathi/parsers/` contains deterministic fallback parsers.
 - `dukaan_saathi/integrations/` contains thin HTTP/model integration clients.
 - `modal_apps/` contains Modal-hosted model services and training jobs.
+- `kirana_db.py` is the custom FastAPI UI adapter over the Dukaan storage
+  layer. It must preserve the same owner-approval safety rules while this path
+  is migrated toward the canonical inventory service boundary.
 
 ## Safety Architecture
 
 - Inventory writes must go through `dukaan_saathi/services/inventory.py`.
+  The current custom FastAPI path still writes through `kirana_db.py`, which
+  delegates to the Dukaan storage ledger; do not add new direct stock writes
+  elsewhere.
 - Model output must never update inventory directly.
 - Receipt extraction must populate an editable table first.
 - Stock command parsing must produce a pending owner action first.
@@ -70,11 +76,24 @@ Important files:
 - Do not add heavy model inference directly to the Gradio or FastAPI runtime.
 - ReAct traces should explain `Thought`, `Action`, and `Observation` steps, but
   traces are audit/UI context only; they are not permission to write stock.
+- ReAct is the orchestrator, not the model. It calls tools; model-backed tools
+  may call Modal, Hugging Face Inference, or local llama.cpp. The public Space
+  should rely on HF Inference plus optional Modal endpoints, not local model
+  servers.
 
 When reviewing changes, flag any code path that bypasses owner approval before
 stock changes.
 
 ## Runtime And Environment
+
+The public Hugging Face Space is:
+
+```text
+https://huggingface.co/spaces/Zappandy/Kirana_AI
+```
+
+The root `Dockerfile` deploys the Space frontend/backend by running
+`uvicorn app:server`. Do not add a local model-server requirement to that path.
 
 Use these local run paths:
 
@@ -91,7 +110,7 @@ Supported receipt backends:
 
 - `hf_inference` is the preferred public Hugging Face Space path.
 - `modal_llm` calls the Modal-hosted receipt parser endpoint.
-- `llamacpp` uses local llama.cpp servers.
+- `llamacpp` uses local llama.cpp servers only; do not require it for HF Spaces.
 - `deterministic` uses rule-based parsers for smoke tests and offline
   debugging.
 
@@ -116,6 +135,10 @@ SQLite defaults to `data/dukaan.db`. Local tests and demos may mutate this file.
 Hosted HF Spaces state is not durable unless persistent storage is configured
 and `DB_PATH` points at that persistent location.
 
+For the public Space, use `DB_PATH=/data/dukaan.db` only when HF persistent
+storage is enabled. Otherwise leave `DB_PATH` unset and treat the DB as
+runtime-local demo state.
+
 Runtime manifests, when enabled, belong under `data/runs/` and are local
 evidence only. They must not contain tokens.
 
@@ -125,9 +148,10 @@ Receipt image flow:
 
 ```text
 uploaded image
--> Modal MiniCPM-V OCR endpoint
+-> ReAct router
+-> Modal MiniCPM-V OCR tool
 -> raw receipt text
--> configured receipt parser backend
+-> configured receipt parser tool/backend
 -> editable receipt table
 -> owner correction/approval
 -> inventory service
@@ -147,7 +171,7 @@ Speech flow:
 audio
 -> Modal speech endpoint
 -> transcript
--> stock command parser or agent
+-> ReAct stock command tool
 -> pending owner action
 -> owner approval
 -> inventory service
@@ -167,41 +191,42 @@ Use `uv run modal ...` for Modal commands.
 
 Prioritize safety and demo-critical correctness before polish.
 
+### Completed Recently
+
+- Voice stock commands parse to a pending action and require explicit owner
+  approval before stock writes.
+- The custom FastAPI photo and voice paths use the lean ReAct router first, with
+  deterministic/configured fallback paths.
+- Dashboard "Add to order" and "Offer to route" create pending order rows.
+- Receipt rows are post-matched against inventory before display.
+- Stock ledger deltas migrate to `REAL` for fractional quantities.
+- Dashboard insights use deterministic inventory/expiry state.
+- Orders support "Mark received" after approval.
+- Analytics has a `7d` / `30d` / `90d` sales window.
+- Modal photo/speech flows expose cold-start loading hints and `/api/warm`.
+
 ### P0 / P1
 
-- Enforce owner confirmation for voice stock commands before inventory writes.
-  Current voice flows must not auto-apply parsed actions.
-- Verify the active ReAct path is used consistently for photo/text/voice flows
-  where intended, with traces exposed to the UI.
-- Make dashboard "Add to order" persist a pending order through the database
-  instead of only showing a toast.
-- Fix float quantity truncation in stock ledger paths. Prefer the smallest safe
-  immediate fix unless doing a proper migration.
-- Add receipt row product matching so parsed receipt rows suggest existing
-  inventory products instead of defaulting to new products.
-- Improve Modal cold-start UX for photo and voice actions with clear loading
-  feedback.
+- Add and maintain tests for every approval gate and order/receipt transition.
+- Migrate the custom FastAPI inventory writes from `kirana_db.py` toward
+  `dukaan_saathi/services/inventory.py`, or keep documenting the adapter
+  boundary explicitly until migration is done.
+- Keep fractional quantity behavior covered in tests when changing receipt,
+  stock, reorder, or sales flows.
 
 ### P2
 
-- Replace static dashboard insight text with deterministic prose derived from
-  current inventory/reorder/expiry state.
-- Make dashboard "Offer to route" record a pending liquidation/order intent or
-  route to a future liquidation flow.
-- Add an Orders "Mark Received" flow for approved orders that applies received
-  quantity through the normal inventory approval/write boundary.
-- Add a lightweight `/api/warm` endpoint or equivalent keep-warm hook for Modal
-  endpoints if it does not complicate deployment.
+- Improve `/api/warm` with endpoint-specific health routes if Modal services
+  expose them, while keeping page load non-blocking.
+- Add mocked tests for successful and malformed Modal/llama.cpp model responses.
 
 ### P3
 
-- Add analytics date range filtering for top sellers and related metrics.
 - Consider LLM-backed voice NLU for Telugu/code-mixed commands, with deterministic
   parser fallback and owner confirmation.
 - Consider LLM-generated dashboard prose only after deterministic insights are
   stable.
 - Expand receipt fine-tuning data and benchmark coverage.
-- Add mocked tests for successful and malformed Modal/llama.cpp model responses.
 
 ## UI And Demo Constraints
 

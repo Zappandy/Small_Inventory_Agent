@@ -11,9 +11,9 @@ def draft_reorder() -> tuple[list[dict[str, Any]], list[str]]:
     rows: list[dict[str, Any]] = []
 
     for product in low_stock:
-        current = int(product["current_stock"])
-        threshold = int(product["reorder_threshold"])
-        target = int(product["target_stock"])
+        current = float(product["current_stock"])
+        threshold = float(product["reorder_threshold"])
+        target = float(product["target_stock"])
         suggested_qty = max(target - current, 0)
 
         unit_cost = float(product.get("last_unit_cost") or 0)

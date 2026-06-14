@@ -425,8 +425,8 @@ def _build_categories() -> dict:
     }
 
 
-def _build_sellers() -> dict:
-    raw = db.get_top_sellers(n=10, days=30)
+def _build_sellers(days: int = 30) -> dict:
+    raw = db.get_top_sellers(n=10, days=days)
     if not raw:
         return {"rows": [], "total_revenue": 0}
     revs = [(t.get("revenue") or 0) for t in raw]
@@ -709,44 +709,57 @@ def _ctx_orders(state: dict) -> dict:
         all_orders = [o for o in all_orders if o["status"] == active_filter]
 
     status_kind = {"pending": "warn", "approved": "success",
-                   "rejected": "danger"}
+                   "received": "success", "rejected": "danger"}
     rows = [{
         "id": o["id"], "product_name": o["product_name"],
+        "product_id": o["product_id"],
+        "qty_needed": o["qty_needed"],
+        "unit": o["unit"],
         "qty_str": f"{o['qty_needed']} {o['unit']}",
         "reason": (o["reason"] or "")[:80],
         "confidence": f"{o['ai_confidence']*100:.0f}",
+        "status_raw": o["status"],
         "status": o["status"].upper(),
         "status_kind": status_kind.get(o["status"], "neutral"),
         "created_at": (o["created_at"] or "")[:16],
     } for o in all_orders]
     return {
         "orders": rows,
-        "order_filters": ["pending", "approved", "rejected", "all"],
+        "order_filters": ["pending", "approved", "received", "rejected", "all"],
         "active_filter": active_filter,
     }
 
 
 def _ctx_analytics(state: dict) -> dict:
+    try:
+        days = int(state.get("analytics_days", 30))
+    except (TypeError, ValueError):
+        days = 30
+    if days not in {7, 30, 90}:
+        days = 30
+
     s = db.get_summary()
     val  = s.get("total_value", 0) or 0
     cost = s.get("cost_value", 0) or 0
     margin = val - cost
     margin_pct = (margin / val * 100) if val else 0
 
-    top = db.get_top_sellers(n=5, days=30)
+    top = db.get_top_sellers(n=5, days=days)
     units_sold = sum(t["total_sold"] for t in top) if top else 0
     revenue = sum((t.get("revenue") or 0) for t in top) if top else 0
 
     return {
         "categories":  _build_categories(),
-        "sellers":     _build_sellers(),
+        "sellers":     _build_sellers(days),
+        "analytics_days": days,
+        "analytics_ranges": [7, 30, 90],
         "icon_chart":  ICON["analytics"],
         "icon_trophy": ICON["trophy"],
         "metrics": [
-            {"label": "30-Day Revenue", "value": f"₹{revenue:,.0f}",
+            {"label": f"{days}-Day Revenue", "value": f"₹{revenue:,.0f}",
              "icon": ICON["rupee"],   "color": "success", "foot": "from top 5 sellers"},
             {"label": "Units Sold",     "value": f"{units_sold:.0f}",
-             "icon": ICON["shipped"], "color": "primary", "foot": "last 30 days"},
+             "icon": ICON["shipped"], "color": "primary", "foot": f"last {days} days"},
             {"label": "Gross Margin",   "value": f"{margin_pct:.1f}%",
              "icon": ICON["trend"],   "color": "info",
              "foot": f"₹{margin:,.0f} held on shelf"},

@@ -124,12 +124,18 @@ DEMO_ALIASES = {
         "Bingo C",
         "Bingo(C)",
         "Bingo (C)",
+        "Bingo chips",
+        "Bingo packet",
+        "Bingoo",
         "Bm",
     ],
     "parle_bulk": [
         "Parle bulk",
         "parle bulk",
         "Parle",
+        "Parle biscuit",
+        "Parle biscuits",
+        "Parle case",
     ],
     "parle_60gm_72p": [
         "PARLE-G 60GM RS.72P",
@@ -138,6 +144,8 @@ DEMO_ALIASES = {
         "Parle-G 60GM",
         "Parle-G",
         "parle-g",
+        "Parle G",
+        "Parle G biscuit",
     ],
     "happy_24p": [
         "Happy",
@@ -147,17 +155,23 @@ DEMO_ALIASES = {
         "HAPPY HAPPY 27.5G(24P)*13",
         "Happy 24P",
         "Happy 2",
+        "Happy biscuit",
+        "Happy Happy biscuit",
     ],
     "bun": [
         "Bun",
         "Buns",
         "bun",
         "buns",
+        "bread bun",
+        "bakery bun",
     ],
     "obm": [
         "OBM",
         "Obm",
         "obm",
+        "O B M",
+        "OBM bun",
     ],
 }
 
@@ -202,7 +216,7 @@ CREATE TABLE IF NOT EXISTS aliases (
 CREATE TABLE IF NOT EXISTS stock_ledger (
     id TEXT PRIMARY KEY,
     product_id TEXT NOT NULL,
-    delta INTEGER NOT NULL,
+    delta REAL NOT NULL,
     event_type TEXT NOT NULL,
     source_doc TEXT DEFAULT '',
     unit_cost REAL DEFAULT 0,
@@ -257,9 +271,16 @@ def _ensure_db_parent() -> None:
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback):
+        result = super().__exit__(exc_type, exc_value, traceback)
+        self.close()
+        return result
+
+
 def get_conn() -> sqlite3.Connection:
     _ensure_db_parent()
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, factory=ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -293,9 +314,64 @@ def init_db(seed_demo_data: bool = True) -> None:
     """
     with db_conn() as conn:
         conn.executescript(SCHEMA_SQL)
+        _migrate_stock_ledger_delta_to_real(conn)
 
     if seed_demo_data:
         seed_database()
+
+
+def _migrate_stock_ledger_delta_to_real(conn: sqlite3.Connection) -> None:
+    columns = conn.execute("PRAGMA table_info(stock_ledger)").fetchall()
+    delta_column = next((column for column in columns if column["name"] == "delta"), None)
+    if delta_column is None or str(delta_column["type"]).upper() == "REAL":
+        return
+
+    conn.execute("DROP VIEW IF EXISTS current_stock")
+    conn.execute("ALTER TABLE stock_ledger RENAME TO stock_ledger_old")
+    conn.execute(
+        """
+        CREATE TABLE stock_ledger (
+            id TEXT PRIMARY KEY,
+            product_id TEXT NOT NULL,
+            delta REAL NOT NULL,
+            event_type TEXT NOT NULL,
+            source_doc TEXT DEFAULT '',
+            unit_cost REAL DEFAULT 0,
+            note TEXT DEFAULT '',
+            recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO stock_ledger
+        (id, product_id, delta, event_type, source_doc, unit_cost, note, recorded_at)
+        SELECT id, product_id, CAST(delta AS REAL), event_type, source_doc, unit_cost, note, recorded_at
+        FROM stock_ledger_old
+        """
+    )
+    conn.execute("DROP TABLE stock_ledger_old")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_ledger_product_id ON stock_ledger(product_id)")
+    conn.execute(
+        """
+        CREATE VIEW current_stock AS
+        SELECT
+            p.id AS product_id,
+            p.name AS product_name,
+            p.supplier_id,
+            p.unit_type,
+            p.units_per_case,
+            p.reorder_threshold,
+            p.target_stock,
+            p.last_unit_cost,
+            COALESCE(SUM(sl.delta), 0) AS current_stock
+        FROM products p
+        LEFT JOIN stock_ledger sl ON sl.product_id = p.id
+        WHERE p.active = 1
+        GROUP BY p.id
+        """
+    )
 
 
 def seed_database() -> None:
@@ -473,7 +549,7 @@ def get_supplier_by_name(name: str) -> dict[str, Any] | None:
     return None
 
 
-def get_current_stock(product_id: str) -> int:
+def get_current_stock(product_id: str) -> float:
     with db_conn() as conn:
         row = conn.execute(
             """
@@ -487,14 +563,14 @@ def get_current_stock(product_id: str) -> int:
     if row is None:
         return 0
 
-    return int(row["current_stock"])
+    return float(row["current_stock"])
 
 
 def get_low_stock() -> list[dict[str, Any]]:
     return [
         row
         for row in get_inventory()
-        if int(row["current_stock"]) <= int(row["reorder_threshold"])
+        if float(row["current_stock"]) <= float(row["reorder_threshold"])
     ]
 
 
@@ -604,7 +680,7 @@ def find_product(query: str) -> dict[str, Any] | None:
 
 def apply_stock_delta(
     product_id: str,
-    delta: int,
+    delta: float,
     event_type: str,
     source_doc: str = "",
     unit_cost: float | None = None,
@@ -621,7 +697,7 @@ def apply_stock_delta(
         raise ValueError(f"Unknown product_id: {product_id}")
 
     previous_stock = get_current_stock(product_id)
-    requested_delta = int(delta)
+    requested_delta = float(delta or 0)
     new_stock = max(previous_stock + requested_delta, 0)
     safe_delta = new_stock - previous_stock
 
@@ -668,7 +744,7 @@ def apply_stock_delta(
 
 def set_product_stock(
     product_id: str,
-    new_stock: int,
+    new_stock: float,
     event_type: str,
     source_doc: str = "",
     note: str = "",
@@ -677,7 +753,7 @@ def set_product_stock(
     Set stock to an absolute number by calculating a ledger delta.
     """
     previous_stock = get_current_stock(product_id)
-    target_stock = max(int(new_stock), 0)
+    target_stock = max(float(new_stock or 0), 0)
     delta = target_stock - previous_stock
 
     return apply_stock_delta(

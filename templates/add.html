@@ -228,7 +228,7 @@
          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <div class="add-photo-icon" aria-hidden="true">{{ icons.camera|safe }}</div>
       <div class="add-photo-headline">Drop a label photo, or click to browse</div>
-      <div class="add-photo-sub">JPG · PNG · HEIC up to 10 MB. The on-device vision model reads name, brand, category, pack size, and expiry.</div>
+      <div class="add-photo-sub">JPG · PNG · HEIC up to 10 MB. Modal vision may take a few seconds to wake, then returns editable receipt rows.</div>
       <div class="add-photo-kbd"><kbd>Enter</kbd> opens the picker</div>
     </div>
 
@@ -294,8 +294,7 @@
       <div>
         <div class="voice-capture-title">Speak the command</div>
         <div class="voice-capture-sub">
-          Try <em lang="te">"కందిపప్పు ఇరవై కేజీలు వచ్చింది"</em>
-          or <em>"Toor dal 20 kg arrived"</em>.
+          Try <em>"add Bun 12"</em> or <em>"set OBM stock 5"</em>.
         </div>
       </div>
       <div class="voice-lang" role="group" aria-label="Recognition language">
@@ -332,20 +331,20 @@
 
     <div class="voice-examples" role="list" aria-label="Example commands">
       <button type="button" class="voice-chip" role="listitem"
-              data-example="కందిపప్పు 20 కేజీలు వచ్చింది" lang="te">
-        కందిపప్పు 20 కేజీలు వచ్చింది
+              data-example="add Bun 12">
+        add Bun 12
       </button>
       <button type="button" class="voice-chip" role="listitem"
-              data-example="3 కేజీల బాస్మతి బియ్యం అమ్మాను" lang="te">
-        3 కేజీల బాస్మతి అమ్మాను
+              data-example="set OBM stock 5">
+        set OBM stock 5
       </button>
       <button type="button" class="voice-chip" role="listitem"
-              data-example="Add 5 packets Maggi">
-        Add 5 packets Maggi
+              data-example="add Bingo 4">
+        add Bingo 4
       </button>
       <button type="button" class="voice-chip" role="listitem"
-              data-example="Sold 2 litres sunflower oil">
-        Sold 2 L sunflower oil
+              data-example="Happy Happy low">
+        Happy Happy low
       </button>
     </div>
 
@@ -366,6 +365,7 @@
               onclick="kirana.transcribeAudio()">
         Transcribe with Modal
       </button>
+      <div class="add-row-hint">Cold starts can take 10-30 seconds; keep this page open while it runs.</div>
     </div>
 
     <div class="voice-or" aria-hidden="true"><span>or type it</span></div>
@@ -382,7 +382,7 @@
                autocomplete="off">
       </div>
       <input type="hidden" name="lang" id="voice-lang-input" value="te-IN">
-      <button type="submit" class="btn btn-primary">Parse and apply</button>
+      <button type="submit" class="btn btn-primary">Parse for approval</button>
     </form>
 
     {% if voice_result %}
@@ -396,12 +396,32 @@
         <dl class="add-photo-dl">
           <dt>Action</dt>   <dd><code>{{ voice_result.action }}</code></dd>
           <dt>Product</dt>  <dd>{{ voice_result.product or '—' }}</dd>
-          <dt>Quantity</dt> <dd>{% if voice_result.quantity %}{{ voice_result.quantity }} {{ voice_result.unit }}{% else %}—{% endif %}</dd>
+          <dt>Quantity</dt> <dd>{% if voice_result.quantity is not none %}{{ voice_result.quantity }} {{ voice_result.unit }}{% else %}—{% endif %}</dd>
         </dl>
+        {% if voice_result.needs_approval %}
+          <div class="alert alert-info" style="margin-top:10px">
+            <span class="alert-icon" aria-hidden="true">{{ icons.info|safe }}</span>
+            <div class="alert-body">
+              <div class="alert-title">Review before updating stock</div>
+              <div class="alert-sub">Inventory will change only after you approve this parsed command.</div>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:10px"
+                  onclick='kirana.dispatch("voice_apply", {{ voice_result|tojson }})'>
+            {{ icons.check|safe }} Approve stock change
+          </button>
+        {% endif %}
         {% if voice_result.applied %}
           <div class="alert alert-success" style="margin-top:10px">
             <span class="alert-icon" aria-hidden="true">{{ icons.check|safe }}</span>
             <div class="alert-body"><div class="alert-title">{{ voice_result.applied }}</div></div>
+          </div>
+        {% endif %}
+        {% if voice_result.trace %}
+          <div class="muted" style="margin-top:10px">
+            {% for line in voice_result.trace %}
+              <div>{{ line }}</div>
+            {% endfor %}
           </div>
         {% endif %}
       </div>

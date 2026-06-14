@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
-RUN mkdir -p data/runs
+RUN mkdir -p data/runs /data
 
 EXPOSE 7860
 

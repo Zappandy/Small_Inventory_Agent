@@ -191,7 +191,7 @@
         const fd = new FormData();
         fd.append("image", file);
         fd.append("state", JSON.stringify(window.kirana._state || {}));
-        toast("Analyzing photo…", "info");
+        toast("Sending photo to Modal. Cold starts can take 10-30 seconds…", "info");
         fetch("/api/photo", { method: "POST", body: fd })
             .then(function (r) { return r.json(); })
             .then(applyResponse)
@@ -213,7 +213,7 @@
         fd.append("audio", input.files[0]);
         fd.append("state", JSON.stringify(window.kirana._state || {}));
 
-        toast("Transcribing audio…", "info");
+        toast("Sending audio to Modal. Cold starts can take 10-30 seconds…", "info");
         fetch("/api/speech", { method: "POST", body: fd })
             .then(function (r) { return r.json(); })
             .then(function (payload) {
@@ -584,7 +584,7 @@
             if (input) input.value = text;
             if (tr) { tr.textContent = text; tr.classList.add("is-active"); }
             state.final = text; state.interim = "";
-            setStatus('Loaded example. Submitting…');
+            setStatus('Loaded example. Parsing for approval…');
             setTimeout(function () { submitVoice(); }, 200);
         }
 
@@ -866,8 +866,8 @@
 
         function stop() {
             if (recorder && isRecording) {
-                setStatus("Sending audio to Modal…");
-                toast("Transcribing audio…", "info");
+                setStatus("Sending audio to Modal. Cold starts can take 10-30 seconds…");
+                toast("Transcribing audio with Modal…", "info");
                 recorder.stop();
             } else {
                 cleanup();
@@ -961,6 +961,8 @@
         toggleTheme: toggleTheme,
         voice: createModalVoice(),
     };
+
+    fetch("/api/warm").catch(function () {});
 
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", init);

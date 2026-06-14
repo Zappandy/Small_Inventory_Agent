@@ -826,7 +826,7 @@ def handle_parse_command(command: str):
     try:
         result = _react_agent().parse_stock_command(command)
         action = result.action or {}
-        trace = result.trace
+        trace = "\n".join(result.trace)
         if action.get("status") != "pending_approval":
             raise ValueError("ReAct agent returned no pending approval action")
     except Exception as exc:
@@ -856,7 +856,7 @@ def handle_parse_receipt(image, raw_text: str):
     try:
         result = _react_agent().parse_receipt_text(raw_text)
         rows = result.receipt_rows or []
-        trace = result.trace
+        trace = "\n".join(result.trace)
         if not rows:
             raise ValueError("ReAct agent returned no receipt rows")
     except Exception as exc:
@@ -894,7 +894,7 @@ def handle_extract_receipt_image(image_path, raw_text: str = ""):
     try:
         result = _react_agent().extract_receipt_image(str(image_path or ""))
         rows = result.receipt_rows or []
-        trace = result.trace
+        trace = "\n".join(result.trace)
         if not rows:
             raise ValueError("ReAct agent returned no rows")
     except Exception as exc:

@@ -8,6 +8,44 @@ from dukaan_saathi.storage import apply_stock_delta, find_product, set_product_s
 from dukaan_saathi.traceability import new_run_id, utc_now_iso, write_manifest
 
 
+def apply_owner_stock_delta(
+    *,
+    product_id: str,
+    delta: float,
+    event_type: str,
+    source_doc: str,
+    note: str = "",
+    unit_cost: float | None = None,
+) -> dict[str, Any]:
+    """Apply an owner-approved stock delta through the canonical service layer."""
+    return apply_stock_delta(
+        product_id=product_id,
+        delta=float(delta),
+        event_type=event_type,
+        source_doc=source_doc,
+        unit_cost=unit_cost,
+        note=note,
+    )
+
+
+def set_owner_stock(
+    *,
+    product_id: str,
+    new_stock: float,
+    event_type: str,
+    source_doc: str,
+    note: str = "",
+) -> dict[str, Any]:
+    """Set owner-approved absolute stock through the canonical service layer."""
+    return set_product_stock(
+        product_id=product_id,
+        new_stock=float(new_stock),
+        event_type=event_type,
+        source_doc=source_doc,
+        note=note,
+    )
+
+
 def approve_command_action(action: dict[str, Any] | None) -> tuple[str, list[str]]:
     trace: list[str] = []
     run_id = new_run_id("inventory-approval")
@@ -26,9 +64,9 @@ def approve_command_action(action: dict[str, Any] | None) -> tuple[str, list[str
         return "Missing product_id.", ["Cannot approve action without product_id."]
 
     if action_type == "set_stock":
-        result = set_product_stock(
+        result = set_owner_stock(
             product_id=product_id,
-            new_stock=int(action["new_stock"]),
+            new_stock=float(action["new_stock"]),
             event_type="command",
             source_doc="typed_command",
             note=action.get("reason", ""),
@@ -53,9 +91,9 @@ def approve_command_action(action: dict[str, Any] | None) -> tuple[str, list[str
         return f"Approved: {result['product_name']} stock is now {result['new_stock']}.", trace
 
     if action_type == "add_stock":
-        result = apply_stock_delta(
+        result = apply_owner_stock_delta(
             product_id=product_id,
-            delta=int(action["delta"]),
+            delta=float(action["delta"]),
             event_type="command",
             source_doc="typed_command",
             note=action.get("reason", ""),
@@ -140,7 +178,7 @@ def approve_receipt_rows(receipt_rows: pd.DataFrame | list[dict[str, Any]] | Non
             continue
 
         try:
-            quantity = int(float(row.get("quantity", 0)))
+            quantity = float(row.get("quantity", 0))
         except (TypeError, ValueError):
             skipped += 1
             skipped_rows.append({
@@ -177,7 +215,7 @@ def approve_receipt_rows(receipt_rows: pd.DataFrame | list[dict[str, Any]] | Non
         else:
             unit_cost = raw_unit_price
 
-        result = apply_stock_delta(
+        result = apply_owner_stock_delta(
             product_id=product_id,
             delta=quantity,
             event_type="receipt",

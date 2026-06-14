@@ -294,10 +294,13 @@ Receipt image and speech are separate optional Modal services:
 
 ```text
 receipt image
+→ ReAct router
+→ extract_text_from_receipt_image tool
 → dukaan_saathi/integrations/modal_receipt.py
 → MODAL_RECEIPT_ENDPOINT
 → modal_apps/receipt_vlm_service.py
 → raw receipt text
+→ parse_receipt_text_tool
 → configured receipt parser backend
 → editable receipt table
 → owner approval
@@ -305,11 +308,12 @@ receipt image
 ```
 
 ```text
-correction audio
+voice or correction audio
 → dukaan_saathi/integrations/speech.py
 → MODAL_SPEECH_ENDPOINT
-→ correction textbox
-→ owner applies correction
+→ transcript
+→ ReAct router for stock commands, or correction parser for receipt rows
+→ pending action / corrected editable rows
 → owner approval
 ```
 
@@ -328,6 +332,38 @@ The active Gradio path uses a lean ReAct-style router in
 `dukaan_saathi/agent/react_agent.py`. It records `Thought`, `Action`, and
 `Observation` trace lines, chooses the correct existing tool for the small task
 set, and never writes inventory directly.
+
+ReAct is the orchestrator, not the model. It calls tools; some tools call remote
+models. For example, receipt-photo ReAct chooses the OCR tool, that tool calls
+the Modal MiniCPM-V endpoint, then ReAct chooses the receipt parser tool, which
+uses the configured backend:
+
+```text
+Receipt photo
+→ ReAct
+→ Modal OCR tool
+→ receipt parser tool
+   → HF Inference / Modal LLM / llama.cpp / deterministic parser
+→ editable rows
+→ owner approval
+→ inventory write
+```
+
+Voice follows the same approval-gated shape:
+
+```text
+Audio
+→ Modal ASR
+→ transcript
+→ ReAct stock-command tool
+→ pending stock action
+→ owner approval
+→ inventory write
+```
+
+This separation is intentional: Modal/HF/llama.cpp do expensive inference,
+ReAct sequences safe tools and exposes a trace, and deterministic inventory
+code performs approved writes.
 
 The heavier `smolagents.ToolCallingAgent` implementation remains in
 `dukaan_saathi/agent/agent.py`, but it is no longer the primary Gradio path. The
@@ -395,8 +431,16 @@ uv run python -m pytest smoke_tests/test_receipt_correction.py -q
 
 ### Recommended public HF Space path
 
-This is the public sharing path. It uses the fine-tuned model on Hugging Face
-via the HF Inference API.
+The public Space is:
+
+```text
+https://huggingface.co/spaces/Zappandy/Kirana_AI
+```
+
+The root `Dockerfile` is the deployment artifact for that Space. It runs
+`uvicorn app:server` and should not require local llama.cpp model servers.
+
+This path uses the fine-tuned model on Hugging Face via the HF Inference API.
 
 ```bash
 scripts/dev.sh --hf-inference
@@ -412,15 +456,37 @@ Set:
 
 ```text
 HF_RECEIPT_MODEL_REPO=summerdevlin46/dukaan-saathi-receipt-lora
+RECEIPT_BACKEND=hf_inference
 ```
 
 `HF_TOKEN` is only needed if the model repo is private.
+
+Optional Modal services for the public Space:
+
+```text
+MODAL_RECEIPT_ENDPOINT=...       # receipt image OCR
+MODAL_SPEECH_ENDPOINT=...        # speech transcription
+MODAL_RECEIPT_LLM_ENDPOINT=...   # optional receipt parser fallback
+```
 
 The default backend is:
 
 ```text
 RECEIPT_BACKEND=hf_inference
 ```
+
+SQLite persistence is a product choice:
+
+- Without HF persistent storage, omit `DB_PATH`; the Space uses
+  `data/dukaan.db` inside the runtime and state may reset on rebuild/restart.
+- With HF persistent storage enabled, set:
+
+```text
+DB_PATH=/data/dukaan.db
+```
+
+The Docker image creates `/data`, but durable data still requires persistent
+storage to be enabled in the Space settings.
 
 ### Modal-hosted receipt parser path
 

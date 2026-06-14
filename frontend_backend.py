@@ -15,17 +15,12 @@ from __future__ import annotations
 from typing import Any
 
 import kirana_db as db
+from dukaan_saathi.agent.react_agent import get_react_agent
 from dukaan_saathi.parsers.stock_command import parse_stock_command
 from dukaan_saathi.services.reorder import draft_reorder
 
 
-def run_command_parse(text: str) -> dict[str, Any]:
-    """
-    Parse a typed/voice command and normalise to the shape _h_voice_command expects:
-      action, product, product_id, quantity, unit, confidence, trace
-    """
-    result, trace = parse_stock_command(text)
-
+def _normalise_stock_action(result: dict[str, Any] | None, trace: list[str]) -> dict[str, Any]:
     action_type = (result or {}).get("type")
     status = (result or {}).get("status", "error")
 
@@ -42,7 +37,7 @@ def run_command_parse(text: str) -> dict[str, Any]:
 
     qty = result.get("delta") if action_type == "add_stock" else result.get("new_stock")
     return {
-        "action": action_type,           # "add_stock" | "set_stock"
+        "action": action_type,
         "product": result.get("product_name", ""),
         "product_id": result.get("product_id"),
         "quantity": qty,
@@ -50,6 +45,21 @@ def run_command_parse(text: str) -> dict[str, Any]:
         "confidence": "high",
         "trace": trace,
     }
+
+
+def run_command_parse(text: str) -> dict[str, Any]:
+    """
+    Parse a typed/voice command and normalise to the shape _h_voice_command expects:
+      action, product, product_id, quantity, unit, confidence, trace
+    """
+    try:
+        react_result = get_react_agent().parse_stock_command(text)
+        trace = list(react_result.trace)
+        return _normalise_stock_action(react_result.action, trace)
+    except Exception as exc:
+        result, trace = parse_stock_command(text)
+        trace = [f"ReAct agent unavailable; using deterministic parser: {exc}", *trace]
+        return _normalise_stock_action(result, trace)
 
 
 def run_analysis() -> dict[str, Any]:
@@ -79,15 +89,30 @@ def run_analysis() -> dict[str, Any]:
     except Exception as exc:
         trace.append(f"[frontend_backend] Could not insert pending orders: {exc}")
 
-    if reorder_rows:
-        inventory_msg = f"{len(reorder_rows)} item(s) need reorder review."
+    low = db.get_low_stock()
+    expiring = db.get_expiring_soon(7)
+    expired = db.get_expired()
+
+    if low:
+        names = ", ".join(row["name"] for row in low[:3])
+        more = f" and {len(low) - 3} more" if len(low) > 3 else ""
+        inventory_msg = f"{len(low)} item(s) are low: {names}{more}."
     else:
-        inventory_msg = "Inventory looks okay against current reorder thresholds."
+        inventory_msg = "All active items are above reorder thresholds."
+
+    if expired:
+        expiry_msg = f"{len(expired)} expired item(s) need immediate review."
+    elif expiring:
+        names = ", ".join(row["name"] for row in expiring[:3])
+        more = f" and {len(expiring) - 3} more" if len(expiring) > 3 else ""
+        expiry_msg = f"{len(expiring)} item(s) expire within 7 days: {names}{more}."
+    else:
+        expiry_msg = "No items expire in the next 7 days."
 
     return {
         "ai_inventory_analysis": inventory_msg,
-        "ai_seasonal_advice": "Seasonal recommendations are available in the Seasonal page.",
-        "ai_expiry_advice": "Review expiring-stock cards for near-expiry items.",
+        "ai_seasonal_advice": "Use the Seasonal page for upcoming festival stock planning.",
+        "ai_expiry_advice": expiry_msg,
         "suggested_orders": reorder_rows,
         "needs_human_approval": bool(reorder_rows),
         "orders_inserted": inserted,

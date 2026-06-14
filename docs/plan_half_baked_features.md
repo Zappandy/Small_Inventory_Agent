@@ -1,221 +1,97 @@
-# Audit: Half-baked Features & Backend Gaps
+# Audit: Remaining Feature Gaps For Hugging Face Spaces
 
-Audit date: 2026-06-14. Covers all pages and action handlers.
+Audit date: 2026-06-14. This document is now a status note for the current
+FastAPI/static app running toward a Hugging Face Spaces deployment.
 
----
+## Current HF Spaces Runtime Assumptions
 
-## ✅ Working end-to-end
+- Public demo runtime is the Docker Space defined by `README.md`.
+- The app should default to `RECEIPT_BACKEND=hf_inference` for receipt text
+  parsing with `HF_RECEIPT_MODEL_REPO` set in Space secrets/settings.
+- Receipt image OCR and speech transcription are optional Modal-hosted services
+  called through thin HTTP clients:
+  - `MODAL_RECEIPT_ENDPOINT`
+  - `MODAL_SPEECH_ENDPOINT` or `SPEECH_ASR_ENDPOINT`
+- ReAct is an app-side tool router. It is not a model; it calls tools, and
+  model-backed tools may call Modal, HF Inference, or local llama.cpp.
+- Inventory writes remain owner-approved. Model output can only create editable
+  receipt rows or pending stock actions.
+- SQLite state on HF Spaces is ephemeral unless persistent storage is enabled
+  and `DB_PATH` points at `/data/...`.
 
-| Feature | Path |
-|---------|------|
-| Add product (manual form) | `add_product` → `kirana_db.add_product` → DB |
-| Inventory list + filters | `filter_inventory` / `navigate:inventory` → `db.get_all_products` |
-| Update stock (after PID fix) | `update_stock` → `db.adjust_stock` → stock_ledger |
-| Record sale | `record_sale` → `db.record_sale` → stock_ledger + sales table |
-| Delete product | `delete_product` → `db.delete_product` |
-| Analytics — category mix | `_ctx_analytics` → `_build_categories()` from DB |
-| Analytics — top sellers | `_ctx_analytics` → `db.get_top_sellers()` from sales table |
-| Seasonal forecast | `_ctx_seasonal` → `seasonal_calendar.py` (deterministic) |
-| Settings save | `save_settings` → `db.set_setting` |
-| Dashboard KPIs | `_ctx_dashboard` → `db.get_summary()` |
-| Dashboard pulse chart | `_ctx_dashboard` → sales ledger revenue aggregation |
-| Photo OCR → rows | `POST /api/photo` → Modal MiniCPM-V → receipt parser → rows |
-| Apply receipt row | `apply_receipt_row` → `db.adjust_stock` or `db.add_product` |
-| Speech ASR | `POST /api/speech` → Modal Whisper → transcript |
-| Voice command (after fix) | `voice_command` → `parse_stock_command` → `db.adjust_stock` |
-| Orders list | `filter_orders` → `db.get_all_orders` |
-| Orders approve/reject | `approve_order` / `reject_order` → `db.update_order_status` |
+## Completed Since Original Audit
 
----
+| Feature | Current status |
+|---------|----------------|
+| ReAct photo path | `POST /api/photo` uses `ReceiptReActAgent` first, with direct fallback. |
+| ReAct voice command path | `_h_voice_command` routes through `run_command_parse`, which uses ReAct first. |
+| Voice owner approval | Voice parse creates a pending action; `_h_voice_apply` writes only after explicit approval. |
+| Dashboard Add to order | `_h_add_to_order` inserts a pending order row. |
+| Dashboard Offer to route | `_h_offer_to_route` records a pending liquidation/order intent. |
+| Dashboard insights | `run_analysis` now builds deterministic inventory/expiry prose from DB state. |
+| Float quantity truncation | Immediate rounding fix added in `kirana_db.py` and `dukaan_saathi/storage.py`. |
+| Receipt product matching | Parsed receipt rows are post-matched against existing inventory before display. |
+| Orders Mark received | Approved orders can be marked received and stock is updated through the normal owner action. |
+| Analytics date range | Analytics supports `7d`, `30d`, and `90d` seller windows. |
+| Modal cold-start UX | UI copy explains cold starts; `/api/warm` fire-and-forgets Modal warm pings. |
+| Safety tests | `smoke_tests/test_custom_app_safety.py` covers key approval gates and order transitions. |
 
-## ⚠️ Half-baked — handler exists but has no real backend
+## Still Worth Doing
 
-### 1. Dashboard "Add to order" button
+### 1. Canonical inventory write boundary
 
-**File**: `app.py:_h_add_to_order`
-**Current**: Shows toast "Queued N kg of Tomato for the next order." No DB write, no order row created.
-**Expected**: Create a `pending` order row in `orders` table via `db.insert_orders`.
+The documented ideal is:
 
-**Fix**:
-```python
-def _h_add_to_order(state, params):
-    pid = params.get("pid")
-    try:
-        qty = float(params.get("qty"))
-    except (TypeError, ValueError):
-        return state, "danger|Could not queue this reorder"
-    p = db.get_product(pid)
-    if not p:
-        return state, "danger|Product not found"
-    db.insert_orders([{
-        "product_id": pid,
-        "product_name": p["name"],
-        "qty_needed": qty,
-        "unit": p["unit"],
-        "reason": "Manual reorder from dashboard",
-        "ai_confidence": 0.95,
-    }])
-    state["page"] = "orders"
-    state["orders_filter"] = "pending"
-    return state, f"success|Reorder queued for {p['name']}"
+```text
+owner approval -> dukaan_saathi/services/inventory.py -> storage ledger
 ```
 
----
+The current custom FastAPI path still writes through `kirana_db.py`, which is a
+compatibility adapter over the Dukaan storage layer. It preserves the approval
+gate, but future code should either migrate these writes into
+`dukaan_saathi/services/inventory.py` or keep the adapter boundary explicitly
+documented.
 
-### 2. Dashboard "Offer to route" button
+### 2. Fractional stock follow-through
 
-**File**: `app.py:_h_offer_to_route`
-**Current**: Shows toast "Liquidation offer drafted for {name}." No backend action.
-**Expected**: Either (a) create a draft order of type "liquidation" in orders table, or (b) stub route to a future Liquidation Agent.
+`stock_ledger.delta` now migrates to `REAL`, so fractional stock is supported at
+the storage layer. Keep checking UI formatting, reorder math, and tests whenever
+quantity semantics change.
 
-**Interim fix** (phase 1 — record intent):
-```python
-def _h_offer_to_route(state, params):
-    pid = params.get("pid")
-    p = db.get_product(pid)
-    if not p:
-        return state, "danger|Product not found"
-    db.insert_orders([{
-        "product_id": pid,
-        "product_name": p["name"],
-        "qty_needed": p["quantity"],
-        "unit": p["unit"],
-        "reason": "Liquidation route offer — near expiry or overstock",
-        "ai_confidence": 0.7,
-    }])
-    state["page"] = "orders"
-    state["orders_filter"] = "pending"
-    return state, f"success|Liquidation offer logged for {p['name']}"
-```
+### 3. HF Spaces persistence decision
 
-**Phase 2**: `docs/plan_liquidation_agent.md` — route offer via WhatsApp/SMS to supplier contact.
+For a hackathon demo, ephemeral SQLite may be acceptable. For a realistic public
+Space, decide whether to:
 
----
+- keep session-local state and reset on rebuild, or
+- enable HF persistent storage and set `DB_PATH=/data/dukaan.db`.
 
-### 3. Dashboard AI insights text
+Document the chosen behavior in the Space README/settings.
 
-**File**: `frontend_backend.run_analysis`
-**Current**: Returns static strings regardless of actual inventory state:
-- `"Inventory looks okay against current reorder thresholds."` (even if 5 items are critically low)
-- `"Seasonal recommendations are available in the Seasonal page."`
-- `"Review expiring-stock cards for near-expiry items."`
+### 4. Modal endpoint health and warmup
 
-The dashboard template renders these in an AI insights panel (`.ai-card`). Users see the same text every time.
+`/api/warm` currently sends non-blocking `HEAD` requests. If Modal services
+expose dedicated health routes, use those instead. Keep page load non-blocking
+and avoid surfacing warmup failures as user-facing errors.
 
-**Why it's static**: `run_analysis` calls `draft_reorder()` for the order suggestions, but the narrative text is hardcoded. There's no LLM call for the insights prose.
+### 5. Model endpoint test coverage
 
-**Fix options**:
-- **Option A (no LLM)**: Generate deterministic prose from DB state.
-  ```python
-  low = db.get_low_stock()
-  expiring = db.get_expiring_soon(7)
-  inventory_msg = (
-      f"{len(low)} item(s) critically low: {', '.join(p['name'] for p in low[:3])}"
-      if low else "All items above minimum stock."
-  )
-  ```
-- **Option B (LLM)**: Pass inventory summary to HF Inference model, get a 2–3 sentence summary.
+Add mocked tests for:
 
-See `docs/plan_dashboard_insights_agent.md`.
+- Modal OCR success and malformed responses.
+- Modal speech success and failures.
+- HF Inference receipt parser success and malformed JSON fallback.
+- Modal receipt LLM success and malformed JSON fallback.
 
----
+### 6. Voice NLU quality
 
-### 4. Float quantity truncation
+The current parser is still deterministic/keyword-oriented. For stronger
+Telugu/code-mixed commands on Spaces, add an optional HF Inference voice-NLU
+path with deterministic fallback and the same owner approval gate.
 
-**File**: `kirana_db.py:adjust_stock` and `add_product`; `dukaan_saathi/storage.py:apply_stock_delta`
-**Current**: `delta=int(delta)` — 0.5 kg becomes 0, 1.7 kg becomes 1.
-**Root cause**: `stock_ledger.delta` column is `INTEGER NOT NULL`.
+## Lower Priority Ideas
 
-**Fix options**:
-- **Option A (schema change)**: Alter `stock_ledger.delta` to `REAL`. Requires a migration.
-- **Option B (scale factor)**: Store `delta * 1000` as integer, display as `/ 1000`. Lossy but no migration.
-- **Option C (round instead of truncate)**: `round(delta)` instead of `int(delta)` — at least 0.5 → 1 instead of 0.
-
-**Recommended**: Option C as immediate fix (1 line in `kirana_db.py`), Option A as proper fix when a migration is warranted.
-
-**Files**: `kirana_db.py` lines 338, 409; `dukaan_saathi/storage.py` line 624.
-
----
-
-### 5. Receipt row `matched_product_id` always None
-
-**File**: `dukaan_saathi/parsers/receipt_text.py` and `dukaan_saathi/integrations/modal_receipt.py`
-**Current**: The receipt parser returns rows with `matched_product_id: None` — no attempt to match raw product names against existing inventory.
-**Impact**: Clicking "Apply" on every receipt row always creates a NEW product instead of adding stock to an existing one (if Tomato already exists, applying a Tomato receipt row creates a duplicate "Tomato").
-
-**Fix**: After parsing receipt rows, run `db.find_by_name(row["product_raw"])` and populate `matched_product_id` if a confident match is found. Show as a suggestion in the receipt row UI.
-
-**Files**: `app.py:api_photo` (add a matching pass after parsing), `templates/add.html` (show match badge per row).
-
----
-
-### 6. Orders page — no "Reorder" action
-
-**File**: `templates/orders.html`
-**Current**: Orders can be Approved or Rejected. Approved orders have no further action (no email, no WhatsApp, no inventory write).
-**Expected**: Approving an order should at minimum update the product's `target_stock` or add to stock when goods arrive.
-
-**Fix**: Add a "Mark Received" button on approved orders that dispatches `apply_receipt_row` or `update_stock` for the ordered quantity.
-
----
-
-### 7. Analytics — no date range selector
-
-**Current**: Analytics shows "Top sellers · last 30 days" hardcoded. `get_top_sellers(n=10, days=30)` is hardcoded.
-**Fix**: Add a filter to the analytics page (`7d`, `30d`, `90d`) and pass `days` param through the state.
-
----
-
----
-
-### 8. Modal cold-start latency (UX gap, not a bug)
-
-Both Modal endpoints have 10–30 s cold start after ~5 min idle:
-- OCR: `POST /api/photo` → `MODAL_RECEIPT_ENDPOINT`
-- ASR: `POST /api/speech` → `MODAL_SPEECH_ENDPOINT`
-
-**Short-term fix (1 hr)**: Add a loading spinner/progress hint to the photo and voice buttons so the wait feels intentional rather than broken. Currently the button disables but there is no server-side progress indication.
-
-**Medium-term fix (2 hrs)**: Add `GET /api/warm` to `app.py` that fire-and-forgets a HEAD request to both Modal endpoints, and call it on page load from JS. This keeps containers warm without user interaction.
-
-```python
-@server.get("/api/warm")
-async def api_warm():
-    import threading, requests, os
-    def _ping(url):
-        try: requests.head(url, timeout=5)
-        except Exception: pass
-    for ep in [os.getenv("MODAL_RECEIPT_ENDPOINT",""), os.getenv("MODAL_SPEECH_ENDPOINT","")]:
-        if ep:
-            threading.Thread(target=_ping, args=(ep,), daemon=True).start()
-    return {"ok": True}
-```
-
-JS in `static/app.js` init: `fetch("/api/warm").catch(() => {});`
-
-**Long-term**: `min_containers=1` on Modal functions keeps a T4 always warm (~$0.50/day per endpoint).
-
----
-
-## Priority matrix
-
-| Issue | Effort | Impact | Priority |
-|-------|--------|--------|----------|
-| ReAct agent wired to photo+voice | Medium | Very High | P0 — see plan_react_agent.md |
-| "Add to order" writes to DB | Low | High | P1 |
-| Float quantity (round fix) | Trivial | Medium | P1 |
-| Receipt row product matching | Medium | High | P1 |
-| Modal loading spinner | Low | Medium | P1 |
-| AI insights deterministic prose | Low | Medium | P2 |
-| "Offer to route" → orders table | Low | Medium | P2 |
-| Orders "Mark Received" flow | Medium | High | P2 |
-| `/api/warm` keep-warm endpoint | Low | Medium | P2 |
-| Analytics date range filter | Low | Low | P3 |
-| AI insights LLM prose | High | Medium | P3 |
-
-## Related plans
-
-- ReAct agent integration (P0): `docs/plan_react_agent.md`
-- Voice command NLU: `docs/plan_voice_command_agent.md`
-- Dashboard LLM insights: `docs/plan_dashboard_insights_agent.md` (TBD)
-- Liquidation agent: `docs/plan_liquidation_agent.md` (TBD)
+- LLM-generated dashboard prose after deterministic insights are stable.
+- Expanded receipt fine-tuning data and benchmark reports.
+- Liquidation-agent routing through WhatsApp/SMS after the order-intent stub is
+  enough for the demo.

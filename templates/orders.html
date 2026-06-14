@@ -33,6 +33,7 @@
           <th class="num">Confidence</th>
           <th>Status</th>
           <th>Created</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -45,6 +46,23 @@
             <td class="num">{{ o.confidence }}%</td>
             <td><span class="badge badge-{{ o.status_kind }}">{{ o.status }}</span></td>
             <td class="muted">{{ o.created_at }}</td>
+            <td>
+              {% if o.status_raw == 'pending' %}
+                <button class="btn btn-primary btn-sm"
+                        onclick='kirana.dispatch("approve_order", {"oid": "{{ o.id }}"})'>
+                  {{ icons.check|safe }} Approve
+                </button>
+                <button class="btn btn-danger btn-sm"
+                        onclick='kirana.dispatch("reject_order", {"oid": "{{ o.id }}"})'>
+                  {{ icons.x|safe }} Reject
+                </button>
+              {% elif o.status_raw == 'approved' %}
+                <button class="btn btn-primary btn-sm"
+                        onclick='kirana.dispatch("mark_order_received", {"oid": "{{ o.id }}"})'>
+                  {{ icons.package|safe }} Mark received
+                </button>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>
@@ -64,11 +82,11 @@
   <div class="card-header">
     <h3 class="card-title">
       <span class="card-title-icon">{{ icons.check|safe }}</span>
-      Approve or reject
+      Approve, reject, or receive
     </h3>
   </div>
   <form id="form-ord" onsubmit="event.preventDefault();" class="row-flex">
-    <input class="input" type="number" name="oid" placeholder="Order ID" style="max-width:200px">
+    <input class="input" type="text" name="oid" placeholder="Order ID" style="max-width:260px">
     <button class="btn btn-primary" type="button"
             onclick="kirana.submitForm('form-ord','approve_order')">
       {{ icons.check|safe }} Approve
@@ -76,6 +94,10 @@
     <button class="btn btn-danger" type="button"
             onclick="kirana.submitForm('form-ord','reject_order')">
       {{ icons.x|safe }} Reject
+    </button>
+    <button class="btn btn-secondary" type="button"
+            onclick="kirana.submitForm('form-ord','mark_order_received')">
+      {{ icons.package|safe }} Mark received
     </button>
   </form>
 </div>
