@@ -264,6 +264,7 @@ uv run modal run modal_apps/receipt_llm_service.py::push
 * **llama.cpp + smolagents tools** for the local model-backed receipt parser path
 * **MiniCPM-V 4.6** for receipt image extraction
 * **Distil-Whisper small English** for correction-command speech transcription
+* **Qwen2.5-1.5B-Instruct** for voice command NLU — semantic slot extraction (intent, product name, quantity, unit) from free-form and Telugu/English mixed commands
 * **Modal** for hosting model endpoints
 * **SQLite** for local inventory state
 * **uv** for Python environment and commands
@@ -413,25 +414,27 @@ while preserving the same approval gates.
 ## Main files
 
 ```text
-app.py                                     — FastAPI/Server entry point
-dukaan_saathi/ui/gradio_app.py             — Gradio UI path
-dukaan_saathi/agent/react_agent.py         — lean ReAct tool router
-dukaan_saathi/agent/tools.py               — parser, integration, service tools
-dukaan_saathi/parsers/stock_command.py     — deterministic stock command parser
-dukaan_saathi/parsers/receipt_text.py      — deterministic receipt text parser
+app.py                                      — FastAPI/Server entry point; routes dispatches and approval handlers
+frontend_backend.py                         — adapter between custom HTML frontend and dukaan_saathi backend
+dukaan_saathi/agent/react_agent.py          — lean ReAct tool router; records Thought/Action/Observation traces
+dukaan_saathi/agent/tools.py                — parser, integration, and service tools called by the ReAct router
+dukaan_saathi/parsers/stock_command.py      — deterministic stock command parser (keyword + fuzzy catalog match)
+dukaan_saathi/parsers/receipt_text.py       — deterministic receipt text parser
 dukaan_saathi/parsers/receipt_correction.py — row correction command parser
-dukaan_saathi/services/inventory.py        — canonical inventory write boundary
-dukaan_saathi/services/reorder.py          — reorder suggestion generator
-dukaan_saathi/storage.py                   — SQLite access and seed data
-dukaan_saathi/integrations/modal_receipt.py — Modal OCR HTTP client
-dukaan_saathi/integrations/speech.py       — Modal ASR HTTP client
-modal_apps/receipt_vlm_service.py          — MiniCPM-V receipt OCR endpoint
-modal_apps/speech_asr_service.py           — Distil-Whisper ASR endpoint
-modal_apps/receipt_llm_service.py          — receipt LLM train/serve/push
-modal_apps/receipt_data_generator.py       — synthetic receipt example generator
-scripts/dev.sh                             — local run entrypoint
-scripts/run_app.sh                         — app launcher (called by dev.sh)
-smoke_tests/test_custom_app_safety.py      — approval gate and integration tests
+dukaan_saathi/services/inventory.py         — canonical inventory write boundary (all stock writes go here)
+dukaan_saathi/services/reorder.py           — reorder suggestion generator
+dukaan_saathi/storage.py                    — SQLite access, seed data, find_product
+dukaan_saathi/integrations/command_nlu.py   — Qwen2.5-1.5B NLU HTTP client (MODAL_NLU_ENDPOINT)
+dukaan_saathi/integrations/modal_receipt.py — MiniCPM-V OCR HTTP client (MODAL_RECEIPT_ENDPOINT)
+dukaan_saathi/integrations/speech.py        — Distil-Whisper ASR HTTP client (MODAL_SPEECH_ENDPOINT)
+modal_apps/command_nlu_service.py           — Qwen2.5-1.5B slot extraction endpoint
+modal_apps/receipt_vlm_service.py           — MiniCPM-V receipt OCR endpoint
+modal_apps/speech_asr_service.py            — Distil-Whisper ASR endpoint
+modal_apps/receipt_llm_service.py           — receipt LLM train/serve/push
+modal_apps/receipt_data_generator.py        — synthetic receipt example generator
+scripts/dev.sh                              — local run entrypoint
+scripts/modal_deploy.sh                     — deploy a Modal service and write its URL to .env
+smoke_tests/test_custom_app_safety.py       — approval gate, NLU, and Modal integration tests
 smoke_tests/test_receipt_parser_regression.py
 smoke_tests/test_receipt_correction.py
 ```
@@ -469,9 +472,12 @@ Optional Modal services (add when you have them; app runs without them):
 ```text
 MODAL_RECEIPT_ENDPOINT=...   # receipt image OCR (MiniCPM-V)
 MODAL_SPEECH_ENDPOINT=...    # speech transcription (Distil-Whisper)
+MODAL_NLU_ENDPOINT=...       # voice command slot extraction (Qwen2.5-1.5B)
 ```
 
 `HF_TOKEN` is only needed if `HF_RECEIPT_MODEL_REPO` is a private repo.
+
+**Running on the public HF Space?** Modal endpoints must be added as Space secrets in the HF UI — see [docs/deployment_setup.md](docs/deployment_setup.md) for the full walkthrough.
 
 ### 3 — Run
 
@@ -542,8 +548,14 @@ Deploy the speech ASR endpoint:
 scripts/modal_deploy.sh modal_apps/speech_asr_service.py
 ```
 
-Both commands deploy the Modal app and write the generated endpoint URL to `.env`.
-The receipt deployment writes `MODAL_RECEIPT_ENDPOINT`; the speech deployment writes `MODAL_SPEECH_ENDPOINT`.
+Deploy the voice command NLU endpoint:
+
+```bash
+scripts/modal_deploy.sh modal_apps/command_nlu_service.py
+```
+
+All three commands deploy the Modal app and write the generated endpoint URL to `.env`.
+`MODAL_RECEIPT_ENDPOINT`, `MODAL_SPEECH_ENDPOINT`, and `MODAL_NLU_ENDPOINT` are written automatically.
 
 Load the endpoint environment:
 
@@ -579,11 +591,20 @@ curl -sS -X POST "$MODAL_SPEECH_ENDPOINT" \
   -F "audio=@path/to/audio.wav"
 ```
 
+NLU health check:
+
+```bash
+curl "${MODAL_NLU_ENDPOINT}" \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"command": "add Bun 12"}'
+```
+
 Stop Modal to save cost:
 
 ```bash
 uv run modal app stop dukaan-saathi-receipt-vlm || true
 uv run modal app stop dukaan-saathi-speech-asr || true
+uv run modal app stop dukaan-saathi-command-nlu || true
 uv run modal app list
 ```
 
