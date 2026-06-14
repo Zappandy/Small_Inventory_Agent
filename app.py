@@ -198,9 +198,9 @@ def _h_add_product(state, params):
         expiry_date=expiry,
         supplier=(params.get("supplier") or "").strip(),
     )
-    state["page"] = "add"
-    state["active_method"] = "manual"
-    return state, f"success|'{name}' added"
+    state["page"] = "inventory"
+    state["filters"] = {"q": "", "category": "All", "status": "All"}
+    return state, f"success|'{name}' added to inventory"
 
 
 def _h_apply_receipt_row(state, params):
