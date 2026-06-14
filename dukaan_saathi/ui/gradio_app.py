@@ -73,7 +73,7 @@ CUSTOM_CSS = """
     --kirana-panel: #0d3b2f;
     --kirana-panel-2: #123f34;
     --kirana-line: rgba(220, 246, 229, 0.12);
-    --kirana-muted: #9fb6ad;
+    --kirana-muted: #c4d8cf;
     --kirana-text: #f4fbf6;
     --kirana-gold: #f4a62a;
     --kirana-green: #65c98f;
@@ -133,14 +133,26 @@ footer { display: none !important; }
     font-size: 18px;
     line-height: 1.1;
     font-weight: 800;
+    color: var(--kirana-text);
 }
 
-.brand-subtitle,
 .sidebar-label,
-.sidebar-status,
 .metric-subtitle,
 .panel-subtitle {
     color: var(--kirana-muted);
+}
+
+.brand-subtitle {
+    color: #f7c66f;
+}
+
+.sidebar-status {
+    color: var(--kirana-text);
+    font-weight: 750;
+}
+
+.sidebar-footer div {
+    color: var(--kirana-text);
 }
 
 .brand-subtitle,
@@ -230,6 +242,7 @@ footer { display: none !important; }
     font-size: 34px;
     line-height: 1.05;
     font-weight: 850;
+    color: var(--kirana-text);
 }
 
 .hero-copy {
@@ -312,6 +325,16 @@ footer { display: none !important; }
     margin: 0 !important;
     font-size: 22px !important;
     line-height: 1.2 !important;
+    color: var(--kirana-text) !important;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+    color: var(--kirana-text) !important;
 }
 
 .panel-heading {
@@ -396,6 +419,16 @@ button:not(.selected) {
 .capability-card span {
     color: var(--kirana-muted);
     font-size: 13px;
+}
+
+.prose code,
+.markdown code,
+code {
+    background: rgba(244, 166, 42, 0.16) !important;
+    border: 1px solid rgba(244, 166, 42, 0.28) !important;
+    color: #ffe0a3 !important;
+    border-radius: 5px !important;
+    padding: 1px 5px !important;
 }
 
 @media (max-width: 900px) {
@@ -728,7 +761,6 @@ def handle_draft_reorder():
 
 def build_demo() -> gr.Blocks:
     init_db()
-    stats = dashboard_stats()
 
     with gr.Blocks(
         title="Dukaan Saathi",
@@ -738,14 +770,11 @@ def build_demo() -> gr.Blocks:
         with gr.Row(elem_classes=["app-shell"]):
             with gr.Column(elem_classes=["sidebar"]):
                 gr.HTML(sidebar_brand_html())
-                nav_overview = gr.Button(
-                    f"Overview  {stats['low_stock_count']}",
-                    elem_classes=["nav-button", "nav-button-primary"],
-                )
+                nav_overview = gr.Button("Overview", elem_classes=["nav-button", "nav-button-primary"])
                 nav_inventory = gr.Button("Inventory", elem_classes=["nav-button"])
                 nav_stock_command = gr.Button("Stock Command", elem_classes=["nav-button"])
                 nav_receipt_ai = gr.Button("Receipt AI", elem_classes=["nav-button"])
-                nav_reorder = gr.Button(f"Reorder  {stats['low_stock_count']}", elem_classes=["nav-button"])
+                nav_reorder = gr.Button("Reorder", elem_classes=["nav-button"])
                 gr.HTML(sidebar_footer_html())
 
             with gr.Column(elem_classes=["main-surface"]):
@@ -758,32 +787,7 @@ def build_demo() -> gr.Blocks:
                             overview_receipt_btn = gr.Button("Open receipt photo / text import", variant="primary")
                             overview_reorder_open_btn = gr.Button("Open reorder draft")
                         with gr.Row():
-                            with gr.Column(scale=3):
-                                gr.Markdown(
-                                    """
-                                    <div class="panel-heading">
-                                    <h2>Reorder queue</h2>
-                                    <div class="panel-subtitle">Low stock items proposed for owner review.</div>
-                                    </div>
-                                    """
-                                )
-                                reorder_preview = gr.Dataframe(
-                                    value=empty_reorder_df,
-                                    headers=REORDER_COLUMNS,
-                                    interactive=False,
-                                    wrap=True,
-                                    label=bi("Reorder candidates", "రీఆర్డర్ అభ్యర్థులు"),
-                                )
-                                overview_reorder_btn = gr.Button(
-                                    bi("Refresh reorder queue", "రీఆర్డర్ రిఫ్రెష్"),
-                                    variant="primary",
-                                )
-                                overview_reorder_trace = gr.Textbox(
-                                    label=bi("Reorder trace", "రీఆర్డర్ ట్రేస్"),
-                                    lines=6,
-                                    elem_classes=["trace-box"],
-                                )
-                            with gr.Column(scale=2):
+                            with gr.Column():
                                 gr.Markdown(
                                     """
                                     <div class="panel-heading">
@@ -946,19 +950,27 @@ def build_demo() -> gr.Blocks:
                             wrap=True,
                             label=bi("Editable extracted receipt rows", "సవరించగలిగే బిల్ వరుసలు"),
                         )
+                        gr.Markdown(
+                            """
+                            <div class="panel-heading">
+                            <h3>Correct extracted rows</h3>
+                            <div class="panel-subtitle">Type a correction, or record/upload audio and transcribe it into the same command box.</div>
+                            </div>
+                            """
+                        )
                         with gr.Row():
                             receipt_correction_audio = gr.Audio(
-                                label=bi("Correction audio", "సవరణ ఆడియో"),
+                                label=bi("Record or upload correction audio", "సవరణ ఆడియో"),
                                 type="filepath",
                                 sources=["microphone", "upload"],
                                 scale=3,
                             )
                             transcribe_correction_btn = gr.Button(
-                                bi("Transcribe correction audio", "ఆడియోను టెక్స్ట్ చేయి"),
+                                bi("Transcribe audio to command", "ఆడియోను టెక్స్ట్ చేయి"),
                                 scale=1,
                             )
                         receipt_correction_input = gr.Textbox(
-                            label=bi("Correction command", "సవరణ కమాండ్"),
+                            label=bi("Correction command from text or speech", "సవరణ కమాండ్"),
                             placeholder="first one Parle bulk, second one Bingo",
                             lines=2,
                         )
@@ -1008,12 +1020,15 @@ def build_demo() -> gr.Blocks:
                             """
                             <div class="panel-heading">
                             <h2>Reorder draft</h2>
-                            <div class="panel-subtitle">Drafts a purchase order from inventory thresholds. Nothing is sent automatically.</div>
+                            <div class="panel-subtitle">Calculates low-stock items from the current inventory and suggests how much to buy. Nothing is sent automatically.</div>
+                            </div>
+                            <div class="info-strip">
+                            Click <strong>Generate reorder draft</strong> after inventory changes. The table is read-only because purchasing is outside this MVP.
                             </div>
                             """
                         )
 
-                        reorder_btn = gr.Button(bi("Draft reorder PO", "ఆర్డర్ డ్రాఫ్ట్ చేయి"), variant="primary")
+                        reorder_btn = gr.Button(bi("Generate reorder draft", "ఆర్డర్ డ్రాఫ్ట్ చేయి"), variant="primary")
                         reorder_table = gr.Dataframe(
                             value=empty_reorder_df,
                             headers=REORDER_COLUMNS,
@@ -1030,10 +1045,6 @@ def build_demo() -> gr.Blocks:
                         reorder_btn.click(
                             fn=handle_draft_reorder,
                             outputs=[reorder_table, reorder_trace],
-                        )
-                        overview_reorder_btn.click(
-                            fn=handle_draft_reorder,
-                            outputs=[reorder_preview, overview_reorder_trace],
                         )
                         overview_receipt_btn.click(fn=lambda: select_tab("receipt-import"), outputs=workspace_tabs)
                         overview_reorder_open_btn.click(fn=lambda: select_tab("reorder-draft"), outputs=workspace_tabs)
