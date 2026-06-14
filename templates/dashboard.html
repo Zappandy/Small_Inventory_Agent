@@ -1,0 +1,263 @@
+{# Dashboard — Pulse → KPIs → Reorder queue → Festivals + Liquidation #}
+
+{# ── Stock Pulse (hero viz) ──────────────────────────────────── #}
+{% if pulse %}
+<section class="pulse-card" aria-label="Sales pulse, last {{ pulse.days }} days">
+  <div class="pulse-head">
+    <div class="pulse-headline">
+      <div class="pulse-eyebrow">Last {{ pulse.days }} days</div>
+      <div class="pulse-total">{{ pulse.total_rev_fmt }}</div>
+      <div class="pulse-sub">
+        <span class="pulse-delta pulse-delta-{{ pulse.delta_kind }}">
+          {{ pulse.delta_label }}
+        </span>
+        <span class="pulse-sub-text">vs prior week</span>
+      </div>
+    </div>
+    <div class="pulse-stats">
+      <div class="pulse-stat">
+        <div class="pulse-stat-label">Today</div>
+        <div class="pulse-stat-val">{{ pulse.today_rev_fmt }}</div>
+      </div>
+      <div class="pulse-stat">
+        <div class="pulse-stat-label">Daily avg</div>
+        <div class="pulse-stat-val">{{ pulse.avg_rev_fmt }}</div>
+      </div>
+      <div class="pulse-stat">
+        <div class="pulse-stat-label">Peak</div>
+        <div class="pulse-stat-val">{{ pulse.peak_rev_fmt }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pulse-chart" role="img" aria-label="Revenue trend sparkline"
+       data-pulse-points='{{ pulse.points|tojson }}'>
+    <div class="pulse-cursor" aria-hidden="true"></div>
+    <div class="pulse-tip" role="tooltip" aria-hidden="true">
+      <span class="pulse-tip-day"></span>
+      <span class="pulse-tip-val"></span>
+    </div>
+    <svg class="pulse-svg" viewBox="{{ pulse.viewbox }}" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="pulse-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="var(--accent)" stop-opacity="0.42"/>
+          <stop offset="60%" stop-color="var(--accent)" stop-opacity="0.10"/>
+          <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="pulse-stroke" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"  stop-color="var(--accent-2)"/>
+          <stop offset="100%" stop-color="var(--accent)"/>
+        </linearGradient>
+      </defs>
+      <path class="pulse-area" d="{{ pulse.area_path }}" fill="url(#pulse-fill)"/>
+      <path class="pulse-line" d="{{ pulse.line_path }}" fill="none"
+            stroke="url(#pulse-stroke)" stroke-width="0.9"
+            stroke-linecap="round" stroke-linejoin="round"
+            pathLength="1"/>
+      {% if pulse.points %}
+        {% set last = pulse.points[-1] %}
+        <circle class="pulse-dot-halo" cx="{{ last.x }}" cy="{{ last.y }}" r="1.6"
+                fill="var(--accent)" opacity="0.35"/>
+        <circle class="pulse-dot" cx="{{ last.x }}" cy="{{ last.y }}" r="0.95"
+                fill="var(--accent)"/>
+      {% endif %}
+    </svg>
+    <div class="pulse-axis" aria-hidden="true">
+      {% for pt in pulse.series %}
+        {% if loop.index0 % 2 == 0 or loop.last %}
+          <span class="pulse-axis-tick">{{ pt.label }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<div class="spacer"></div>
+{% endif %}
+
+{# ── KPI strip ───────────────────────────────────────────────── #}
+<div class="kpi-grid">
+  {% for k in kpis %}
+    <div class="kpi {{ k.color }}">
+      <div class="kpi-head">
+        <div class="kpi-label">{{ k.label }}</div>
+        <div class="kpi-icon">{{ k.icon|safe }}</div>
+      </div>
+      <div class="kpi-value">{{ k.value }}</div>
+      <div class="kpi-foot">{{ k.foot }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="spacer"></div>
+
+{# ── Reorder queue (lead action) ──────────────────────────────── #}
+<div class="card insight-card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <span class="card-title-icon">{{ icons.package|safe }}</span>
+      Reorder queue
+    </h3>
+    <div class="card-header-meta">
+      {% if insights.counts.reorders %}
+        <span class="badge badge-warn">{{ insights.counts.reorders }} to order</span>
+      {% else %}
+        <span class="badge badge-success">All stocked</span>
+      {% endif %}
+      <button class="btn btn-ghost btn-sm" type="button"
+              onclick="kirana.quickAction('refresh_insights')"
+              aria-label="Re-run AI analysis">
+        {{ icons.refresh|safe }} Refresh
+      </button>
+    </div>
+  </div>
+
+  {% if insights.reorders %}
+    <ul class="reorder-list" role="list">
+      {% for r in insights.reorders %}
+        <li class="reorder-row">
+          <div class="reorder-rank" aria-hidden="true">{{ loop.index }}</div>
+          <div class="reorder-body">
+            <div class="reorder-name">
+              {{ r.name }}
+              {% if r.name_te %}<span class="reorder-te" lang="te">{{ r.name_te }}</span>{% endif %}
+            </div>
+            <div class="reorder-reason">{{ r.reason }}</div>
+          </div>
+          <div class="reorder-qty">
+            <div class="reorder-qty-num">{{ r.qty_fmt }}</div>
+            <div class="reorder-qty-unit">{{ r.unit }}</div>
+            {% if r.on_hand %}<div class="reorder-onhand">On hand: {{ r.on_hand }}</div>{% endif %}
+          </div>
+          <div class="reorder-conf" title="{{ r.conf_label }}: {{ r.conf_pct }}%">
+            <span class="conf-dot conf-{{ r.conf_cls }}" aria-hidden="true"></span>
+            <span class="conf-label">{{ r.conf_pct }}%</span>
+            <span class="visually-hidden">{{ r.conf_label }}, {{ r.conf_pct }} percent</span>
+          </div>
+          <button class="btn btn-primary btn-sm reorder-action" type="button"
+                  onclick='kirana.quickAction("add_to_order", {pid:{{ r.pid }}, qty:{{ r.qty }}})'>
+            {{ icons.plus|safe }} Add to order
+          </button>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="insight-empty">
+      <div class="insight-empty-icon" aria-hidden="true">{{ icons.package|safe }}</div>
+      <div class="insight-empty-title">Stock is healthy</div>
+      <div class="insight-empty-sub">
+        No products below minimum, and recent 14-day velocity is covered.
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<div class="spacer"></div>
+
+<div class="grid grid-2">
+
+  {# ── Festival demand window ────────────────────────────────── #}
+  <div class="card insight-card">
+    <div class="card-header">
+      <h3 class="card-title">
+        <span class="card-title-icon">{{ icons.festivals|safe }}</span>
+        Festival demand window
+      </h3>
+      {% if insights.festival_strip %}
+        <span class="badge badge-neutral">Next {{ insights.counts.festivals }}</span>
+      {% endif %}
+    </div>
+
+    {% if insights.festival_strip %}
+      <ol class="fest-strip" role="list">
+        {% for f in insights.festival_strip %}
+          <li class="fest-step {% if f.urgent %}fest-urgent{% endif %}">
+            <div class="fest-step-marker" aria-hidden="true">
+              <span class="fest-step-mult">{{ f.mult_fmt }}</span>
+            </div>
+            <div class="fest-step-body">
+              <div class="fest-step-head">
+                <div class="fest-step-name">{{ f.name }}</div>
+                {% if f.name_te %}<div class="fest-step-te" lang="te">{{ f.name_te }}</div>{% endif %}
+              </div>
+              <div class="fest-step-meta">
+                <span class="fest-step-eta">{{ f.eta_label }}</span>
+                <span class="fest-step-prep">Stock {{ f.prep_days }}d ahead</span>
+              </div>
+              <div class="fest-step-gap">
+                {% if f.missing_n %}
+                  <strong>{{ f.missing_n }} of {{ f.demand_n }} missing</strong>
+                  {% if f.missing_preview %}: {{ f.missing_preview }}{% endif %}
+                {% else %}
+                  <span class="fest-step-ok">All {{ f.demand_n }} demand items in stock</span>
+                {% endif %}
+              </div>
+              <button class="btn btn-ghost btn-sm fest-step-cta" type="button"
+                      onclick='kirana.quickAction("plan_festival_stock", {key:"{{ f.key }}"})'>
+                Plan stock
+              </button>
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <div class="insight-empty">
+        <div class="insight-empty-icon" aria-hidden="true">{{ icons.festivals|safe }}</div>
+        <div class="insight-empty-title">No major festival in the next 30 days</div>
+        <div class="insight-empty-sub">
+          Demand stays at baseline. We'll surface festivals as they enter the window.
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── Expiry liquidation ─────────────────────────────────────── #}
+  <div class="card insight-card">
+    <div class="card-header">
+      <h3 class="card-title">
+        <span class="card-title-icon">{{ icons.clock|safe }}</span>
+        Expiry liquidation
+      </h3>
+      {% if insights.counts.liquidation %}
+        <span class="badge badge-warn">{{ insights.counts.liquidation }} to clear</span>
+      {% else %}
+        <span class="badge badge-success">Nothing soon</span>
+      {% endif %}
+    </div>
+
+    {% if insights.liquidation %}
+      <ul class="liquidation-list" role="list">
+        {% for l in insights.liquidation %}
+          <li class="liquidation-row liq-{{ l.kind }}">
+            <div class="liq-head">
+              <div class="liq-name-block">
+                <div class="liq-name">
+                  {{ l.name }}
+                  {% if l.name_te %}<span class="liq-te" lang="te">{{ l.name_te }}</span>{% endif %}
+                </div>
+                <div class="liq-qty">{{ l.qty_fmt }} · expires {{ l.expiry_date }}</div>
+              </div>
+              <span class="liq-chip liq-chip-{{ l.kind }}">{{ l.chip_label }}</span>
+            </div>
+            <div class="liq-action">
+              <div class="liq-hint">{{ l.action_hint }}</div>
+              <button class="btn btn-secondary btn-sm" type="button"
+                      onclick='kirana.quickAction("offer_to_route", {pid:{{ l.pid }}})'>
+                {{ l.action_verb }}
+              </button>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="insight-empty">
+        <div class="insight-empty-icon" aria-hidden="true">{{ icons.clock|safe }}</div>
+        <div class="insight-empty-title">No expiry pressure</div>
+        <div class="insight-empty-sub">
+          Nothing expires in the next 7 days. Re-check after the next intake.
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+</div>

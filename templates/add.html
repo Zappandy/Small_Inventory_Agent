@@ -1,0 +1,461 @@
+{# Add Product — ledger redesign: segmented switcher + hairline rows + sticky save #}
+
+<div class="add-page">
+
+{# ── Method switcher ─────────────────────────────────────────── #}
+<div class="add-switch" role="tablist" aria-label="Choose entry method">
+  <button type="button" role="tab"
+          id="tab-manual"
+          aria-selected="{{ 'true' if active_method == 'manual' else 'false' }}"
+          aria-controls="pane-manual"
+          tabindex="{{ '0' if active_method == 'manual' else '-1' }}"
+          class="add-switch-item {% if active_method == 'manual' %}is-active{% endif %}"
+          data-tab-group="add" data-tab="manual"
+          onclick="kirana.switchTab('add','manual')">
+    <span class="add-switch-icon" aria-hidden="true">{{ icons.edit|safe }}</span>
+    <span class="add-switch-label">
+      <span class="add-switch-title">Manual</span>
+      <span class="add-switch-sub">Fastest when you know the SKU</span>
+    </span>
+    <span class="add-switch-kbd" aria-hidden="true">1</span>
+  </button>
+
+  <button type="button" role="tab"
+          id="tab-photo"
+          aria-selected="{{ 'true' if active_method == 'photo' else 'false' }}"
+          aria-controls="pane-photo"
+          tabindex="{{ '0' if active_method == 'photo' else '-1' }}"
+          class="add-switch-item {% if active_method == 'photo' %}is-active{% endif %}"
+          data-tab-group="add" data-tab="photo"
+          onclick="kirana.switchTab('add','photo')">
+    <span class="add-switch-icon" aria-hidden="true">{{ icons.camera|safe }}</span>
+    <span class="add-switch-label">
+      <span class="add-switch-title">Photo</span>
+      <span class="add-switch-sub">On-device vision reads the label</span>
+    </span>
+    <span class="add-switch-kbd" aria-hidden="true">2</span>
+  </button>
+
+  <button type="button" role="tab"
+          id="tab-voice"
+          aria-selected="{{ 'true' if active_method == 'voice' else 'false' }}"
+          aria-controls="pane-voice"
+          tabindex="{{ '0' if active_method == 'voice' else '-1' }}"
+          class="add-switch-item {% if active_method == 'voice' %}is-active{% endif %}"
+          data-tab-group="add" data-tab="voice"
+          onclick="kirana.switchTab('add','voice')">
+    <span class="add-switch-icon" aria-hidden="true">{{ icons.mic|safe }}</span>
+    <span class="add-switch-label">
+      <span class="add-switch-title">Voice <span lang="te">/ గొంతు</span></span>
+      <span class="add-switch-sub">Telugu and English, on the fly</span>
+    </span>
+    <span class="add-switch-kbd" aria-hidden="true">3</span>
+  </button>
+</div>
+
+{# ══════════════════════════════════════════════════════════════
+   MANUAL — the ledger
+   ══════════════════════════════════════════════════════════════ #}
+<div id="pane-manual" role="tabpanel" aria-labelledby="tab-manual"
+     class="add-pane"
+     data-tab-pane="add" data-pane="manual"
+     style="{% if active_method != 'manual' %}display:none{% endif %}">
+
+  <form id="form-add"
+        class="add-form"
+        novalidate
+        onsubmit="event.preventDefault(); kirana.submitForm('form-add','add_product');">
+
+    <div class="add-form-meta">
+      <span class="add-form-meta-key">New SKU</span>
+      <span class="add-form-meta-val" id="add-meta-name">Untitled product</span>
+      <span class="add-form-meta-required">
+        <span class="required-star" aria-hidden="true">*</span> required
+      </span>
+    </div>
+
+    {# ── Identity ──────────────────────────────────────────── #}
+    <div class="add-row add-row-head">
+      <div class="add-row-label">Identity</div>
+      <div class="add-row-control add-row-headline">
+        How it appears on receipts, inventory, and AI matches.
+      </div>
+    </div>
+
+    <div class="add-row">
+      <label class="add-row-label" for="f-name">
+        Product name
+        <span class="required-star" aria-hidden="true">*</span>
+      </label>
+      <div class="add-row-control">
+        <input id="f-name" class="input add-input"
+               name="name" required aria-required="true"
+               autocomplete="off"
+               placeholder="Basmati Rice"
+               aria-describedby="f-name-help">
+        <div id="f-name-help" class="add-row-hint">English name. Shown everywhere.</div>
+      </div>
+    </div>
+
+    <div class="add-row">
+      <label class="add-row-label" for="f-name-local">
+        Telugu name <span class="add-row-label-aux" lang="te">తెలుగు పేరు</span>
+      </label>
+      <div class="add-row-control">
+        <input id="f-name-local" class="input add-input"
+               name="name_local"
+               autocomplete="off"
+               placeholder="బాస్మతి బియ్యం"
+               lang="te">
+        <div class="add-row-hint">Voice commands and labels in Telugu need this.</div>
+      </div>
+    </div>
+
+    <div class="add-row">
+      <label class="add-row-label" for="f-category">Category</label>
+      <div class="add-row-control add-row-split-2">
+        <select id="f-category" class="select add-input" name="category">
+          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+        <input id="f-supplier" class="input add-input"
+               name="supplier" autocomplete="off"
+               placeholder="Supplier (Sri Lakshmi Traders)"
+               aria-label="Supplier">
+      </div>
+    </div>
+
+    {# ── Stock ────────────────────────────────────────────── #}
+    <div class="add-row add-row-head">
+      <div class="add-row-label">Stock</div>
+      <div class="add-row-control add-row-headline">
+        Current quantity on hand and the floor that triggers a reorder alert.
+      </div>
+    </div>
+
+    <div class="add-row">
+      <label class="add-row-label" for="f-qty">On hand</label>
+      <div class="add-row-control add-row-split-3">
+        <input id="f-qty" class="input add-input num-input"
+               type="number" step="0.01" min="0"
+               name="qty" value="0"
+               inputmode="decimal"
+               aria-label="Current quantity">
+        <select id="f-unit" class="select add-input" name="unit" aria-label="Unit">
+          {% for u in units %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+        </select>
+        <input id="f-min" class="input add-input num-input"
+               type="number" step="0.01" min="0"
+               name="min_stock" value="5"
+               inputmode="decimal"
+               aria-label="Minimum stock alert"
+               placeholder="Min. alert">
+      </div>
+    </div>
+
+    <div class="add-row">
+      <label class="add-row-label" for="f-expiry">Expiry date</label>
+      <div class="add-row-control">
+        <input id="f-expiry" class="input add-input"
+               type="date" name="expiry_date"
+               aria-describedby="f-expiry-help">
+        <div id="f-expiry-help" class="add-row-hint">Leave blank for non-perishable items.</div>
+      </div>
+    </div>
+
+    {# ── Pricing ──────────────────────────────────────────── #}
+    <div class="add-row add-row-head">
+      <div class="add-row-label">Pricing</div>
+      <div class="add-row-control add-row-headline">
+        Margin is recalculated live as you type.
+      </div>
+    </div>
+
+    <div class="add-row">
+      <label class="add-row-label" for="f-buy">Buy price</label>
+      <div class="add-row-control add-row-split-2">
+        <div class="input-affix-wrap">
+          <span class="input-affix" aria-hidden="true">₹</span>
+          <input id="f-buy" class="input add-input has-prefix num-input"
+                 type="number" step="0.01" min="0"
+                 name="buy_price" value="0"
+                 inputmode="decimal"
+                 oninput="kirana._updateMargin && kirana._updateMargin()"
+                 aria-label="Buy price">
+        </div>
+        <div class="input-affix-wrap">
+          <span class="input-affix" aria-hidden="true">₹</span>
+          <input id="f-sell" class="input add-input has-prefix num-input"
+                 type="number" step="0.01" min="0"
+                 name="sell_price" value="0"
+                 inputmode="decimal"
+                 oninput="kirana._updateMargin && kirana._updateMargin()"
+                 aria-label="Sell price"
+                 placeholder="Sell price">
+        </div>
+      </div>
+    </div>
+
+    {# ── Live ledger summary ──────────────────────────────── #}
+    <div class="add-ledger" role="status" aria-live="polite">
+      <div class="add-ledger-row">
+        <span class="add-ledger-label">Profit / unit</span>
+        <span class="add-ledger-rule" aria-hidden="true"></span>
+        <span id="m-profit" class="add-ledger-val">₹0.00</span>
+      </div>
+      <div class="add-ledger-row">
+        <span class="add-ledger-label">Margin</span>
+        <span class="add-ledger-rule" aria-hidden="true"></span>
+        <span id="m-pct" class="add-ledger-val">0%</span>
+      </div>
+    </div>
+  </form>
+</div>
+
+{# ══════════════════════════════════════════════════════════════
+   PHOTO — drop big, edit inline
+   ══════════════════════════════════════════════════════════════ #}
+<div id="pane-photo" role="tabpanel" aria-labelledby="tab-photo"
+     class="add-pane"
+     data-tab-pane="add" data-pane="photo"
+     style="{% if active_method != 'photo' %}display:none{% endif %}">
+
+  <div class="add-photo">
+    <div id="photo-trigger"
+         class="add-photo-zone"
+         role="button"
+         tabindex="0"
+         aria-label="Upload product photo"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+      <div class="add-photo-icon" aria-hidden="true">{{ icons.camera|safe }}</div>
+      <div class="add-photo-headline">Drop a label photo, or click to browse</div>
+      <div class="add-photo-sub">JPG · PNG · HEIC up to 10 MB. The on-device vision model reads name, brand, category, pack size, and expiry.</div>
+      <div class="add-photo-kbd"><kbd>Enter</kbd> opens the picker</div>
+    </div>
+
+    {% if photo_result and photo_result.error %}
+      <div class="add-photo-result">
+        <div class="add-photo-result-head">
+          <div class="add-photo-result-title">Could not parse receipt</div>
+          <span class="badge badge-warn">Error</span>
+        </div>
+        <p>{{ photo_result.error }}</p>
+      </div>
+    {% endif %}
+
+    {% if photo_result and photo_result.rows %}
+      <div class="add-photo-result">
+        <div class="add-photo-result-head">
+          <div class="add-photo-result-title">Receipt rows</div>
+          <span class="badge badge-success">{{ photo_result.rows|length }} row(s)</span>
+        </div>
+        <table class="add-receipt-table">
+          <thead>
+            <tr><th>Product</th><th>Qty</th><th>Unit ₹</th><th>Total ₹</th><th>Conf.</th><th></th></tr>
+          </thead>
+          <tbody>
+          {% for row in photo_result.rows %}
+            <tr>
+              <td>
+                <strong>{{ row.matched_product_name or row.product_raw }}</strong>
+                {% if not row.matched_product_name %}
+                  <div class="muted">No catalog match · raw: {{ row.product_raw }}</div>
+                {% endif %}
+                {% if row.warning %}<div class="muted">{{ row.warning }}</div>{% endif %}
+              </td>
+              <td>{{ row.quantity }}</td>
+              <td>{{ '%.2f' % row.unit_price if row.unit_price else '—' }}</td>
+              <td>{{ '%.2f' % row.total_price if row.total_price else '—' }}</td>
+              <td>{{ '%.0f' % (row.confidence * 100) }}%</td>
+              <td>
+                <button class="btn btn-primary"
+                        onclick='kirana.dispatch("apply_receipt_row", {{ row|tojson }})'>
+                  Apply
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════
+   VOICE — keep the flagship pane
+   ══════════════════════════════════════════════════════════════ #}
+<div id="pane-voice" role="tabpanel" aria-labelledby="tab-voice"
+     class="add-pane"
+     data-tab-pane="add" data-pane="voice"
+     style="{% if active_method != 'voice' %}display:none{% endif %}">
+
+  <div class="voice-capture" id="voice-capture">
+    <div class="voice-capture-head">
+      <div>
+        <div class="voice-capture-title">Speak the command</div>
+        <div class="voice-capture-sub">
+          Try <em lang="te">"కందిపప్పు ఇరవై కేజీలు వచ్చింది"</em>
+          or <em>"Toor dal 20 kg arrived"</em>.
+        </div>
+      </div>
+      <div class="voice-lang" role="group" aria-label="Recognition language">
+        <button type="button" aria-pressed="true"
+                data-lang="te-IN" lang="te">తెలుగు</button>
+        <button type="button" aria-pressed="false"
+                data-lang="en-IN">English</button>
+      </div>
+    </div>
+
+    <div class="voice-mic-stack" aria-hidden="false">
+      <span class="voice-ring r1" aria-hidden="true"></span>
+      <span class="voice-ring r2" aria-hidden="true"></span>
+      <span class="voice-ring r3" aria-hidden="true"></span>
+      <button type="button"
+              id="voice-mic"
+              class="voice-mic"
+              aria-label="Start listening"
+              aria-pressed="false">
+        <span class="voice-mic-icon" aria-hidden="true">{{ icons.mic|safe }}</span>
+      </button>
+      <div id="voice-wave" class="voice-wave" aria-hidden="true"></div>
+    </div>
+
+    <div id="voice-status" class="voice-status" role="status" aria-live="polite">
+      Press the mic or hit <kbd>Space</kbd> to begin.
+    </div>
+
+    <div id="voice-transcript"
+         class="voice-transcript"
+         data-placeholder="Your words will appear here…"
+         aria-live="polite"
+         lang="te"></div>
+
+    <div class="voice-examples" role="list" aria-label="Example commands">
+      <button type="button" class="voice-chip" role="listitem"
+              data-example="కందిపప్పు 20 కేజీలు వచ్చింది" lang="te">
+        కందిపప్పు 20 కేజీలు వచ్చింది
+      </button>
+      <button type="button" class="voice-chip" role="listitem"
+              data-example="3 కేజీల బాస్మతి బియ్యం అమ్మాను" lang="te">
+        3 కేజీల బాస్మతి అమ్మాను
+      </button>
+      <button type="button" class="voice-chip" role="listitem"
+              data-example="Add 5 packets Maggi">
+        Add 5 packets Maggi
+      </button>
+      <button type="button" class="voice-chip" role="listitem"
+              data-example="Sold 2 litres sunflower oil">
+        Sold 2 L sunflower oil
+      </button>
+    </div>
+
+    <div class="voice-or" aria-hidden="true"><span>or type it</span></div>
+
+    <form id="form-voice" class="voice-form"
+          onsubmit="event.preventDefault(); kirana.submitForm('form-voice','voice_command');">
+      <label for="voice-text" class="visually-hidden">Command text</label>
+      <div class="input-affix-wrap">
+        <span class="input-affix" aria-hidden="true">{{ icons.mic|safe }}</span>
+        <input id="voice-text"
+               class="input has-prefix"
+               name="text"
+               placeholder='e.g. "Toor dal 20 kg arrived"'
+               autocomplete="off">
+      </div>
+      <input type="hidden" name="lang" id="voice-lang-input" value="te-IN">
+      <button type="submit" class="btn btn-primary">Parse and apply</button>
+    </form>
+
+    {% if voice_result %}
+      <div class="add-photo-result" style="margin-top:18px" role="status" aria-live="polite">
+        <div class="add-photo-result-head">
+          <div class="add-photo-result-title">Parsed</div>
+          <span class="badge badge-{{ 'success' if voice_result.confidence == 'high' else 'warn' }}">
+            {{ voice_result.confidence }} confidence
+          </span>
+        </div>
+        <dl class="add-photo-dl">
+          <dt>Action</dt>   <dd><code>{{ voice_result.action }}</code></dd>
+          <dt>Product</dt>  <dd>{{ voice_result.product or '—' }}</dd>
+          <dt>Quantity</dt> <dd>{% if voice_result.quantity %}{{ voice_result.quantity }} {{ voice_result.unit }}{% else %}—{% endif %}</dd>
+        </dl>
+        {% if voice_result.applied %}
+          <div class="alert alert-success" style="margin-top:10px">
+            <span class="alert-icon" aria-hidden="true">{{ icons.check|safe }}</span>
+            <div class="alert-body"><div class="alert-title">{{ voice_result.applied }}</div></div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Sticky save bar (only meaningful for manual pane) ───────── #}
+<div class="add-savebar" id="add-savebar"
+     {% if active_method != 'manual' %}hidden{% endif %}>
+  <div class="add-savebar-meta">
+    <span class="add-savebar-eyebrow">Ready to add</span>
+    <span class="add-savebar-name" id="add-savebar-name">Untitled product</span>
+  </div>
+  <div class="add-savebar-actions">
+    <button type="reset" class="btn btn-secondary"
+            form="form-add">Reset</button>
+    <button type="submit" class="btn btn-primary btn-lg"
+            form="form-add">
+      {{ icons.plus|safe }} Add product
+    </button>
+  </div>
+</div>
+
+</div>{# /.add-page #}
+
+<script>
+  (function () {
+      if (!window.kirana) return;
+
+      /* live margin calc — accessible status, no toast spam */
+      window.kirana._updateMargin = function () {
+          var buy  = parseFloat(document.getElementById('f-buy')?.value)  || 0;
+          var sell = parseFloat(document.getElementById('f-sell')?.value) || 0;
+          var profit = sell - buy;
+          var pct = sell > 0 ? (profit / sell) * 100 : 0;
+          var p = document.getElementById('m-profit');
+          var m = document.getElementById('m-pct');
+          if (p) p.textContent = '₹' + profit.toFixed(2);
+          if (m) m.textContent = pct.toFixed(0) + '%';
+          if (p) p.className = 'add-ledger-val ' + (profit > 0 ? 'is-good' : profit < 0 ? 'is-bad' : '');
+          if (m) m.className = 'add-ledger-val ' + (pct >= 15 ? 'is-good' : pct > 0 ? 'is-okay' : 'is-bad');
+      };
+
+      /* mirror product name into meta + savebar */
+      var nameInput = document.getElementById('f-name');
+      var metaName  = document.getElementById('add-meta-name');
+      var barName   = document.getElementById('add-savebar-name');
+      if (nameInput) {
+          nameInput.addEventListener('input', function () {
+              var v = nameInput.value.trim() || 'Untitled product';
+              if (metaName) metaName.textContent = v;
+              if (barName)  barName.textContent  = v;
+          });
+      }
+
+      /* hide savebar for non-manual panes */
+      var bar = document.getElementById('add-savebar');
+      function syncBar(name) {
+          if (!bar) return;
+          if (name === 'manual') bar.removeAttribute('hidden');
+          else bar.setAttribute('hidden', '');
+      }
+      var tabs = document.querySelectorAll('.add-switch-item[role="tab"]');
+      tabs.forEach(function (t, i) {
+          t.addEventListener('click', function () { syncBar(t.dataset.tab); });
+          t.addEventListener('keydown', function (e) {
+              if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+              e.preventDefault();
+              var next = (i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+              tabs[next].focus();
+              tabs[next].click();
+          });
+      });
+  })();
+</script>

@@ -1,0 +1,81 @@
+{# Orders — AI-suggested restock with approval workflow #}
+
+<div class="alert alert-info" style="margin-bottom:14px">
+  <span class="alert-icon" aria-hidden="true">{{ icons.info|safe }}</span>
+  <div class="alert-body">
+    <div class="alert-title">Restock orders — human approval required</div>
+    <div class="alert-sub">The AI suggests orders based on low stock and sales velocity. Review and approve or reject before any purchase.</div>
+  </div>
+</div>
+
+<div class="row-flex between" style="margin-bottom:14px">
+  <div class="pill-tabs" data-tab-group="orders">
+    {% for s in order_filters %}
+      <button class="pill-tab {% if s == active_filter %}active{% endif %}"
+              onclick="kirana.quickAction('filter_orders', {status:'{{ s }}'})">{{ s|capitalize }}</button>
+    {% endfor %}
+  </div>
+  <button class="btn btn-primary" onclick="kirana.quickAction('generate_orders')">
+    {{ icons.sparkles|safe }} Generate orders (AI)
+  </button>
+</div>
+
+<div class="table-wrap">
+  <div class="table-scroll">
+    {% if orders %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Product</th>
+          <th class="num">Qty</th>
+          <th>Reason</th>
+          <th class="num">Confidence</th>
+          <th>Status</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in orders %}
+          <tr>
+            <td class="muted">#{{ o.id }}</td>
+            <td><strong>{{ o.product_name }}</strong></td>
+            <td class="num">{{ o.qty_str }}</td>
+            <td class="muted">{{ o.reason }}</td>
+            <td class="num">{{ o.confidence }}%</td>
+            <td><span class="badge badge-{{ o.status_kind }}">{{ o.status }}</span></td>
+            <td class="muted">{{ o.created_at }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="table-empty">
+        <div class="table-empty-icon" aria-hidden="true">{{ icons.shipped|safe }}</div>
+        <div>No orders in this view.</div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <span class="card-title-icon">{{ icons.check|safe }}</span>
+      Approve or reject
+    </h3>
+  </div>
+  <form id="form-ord" onsubmit="event.preventDefault();" class="row-flex">
+    <input class="input" type="number" name="oid" placeholder="Order ID" style="max-width:200px">
+    <button class="btn btn-primary" type="button"
+            onclick="kirana.submitForm('form-ord','approve_order')">
+      {{ icons.check|safe }} Approve
+    </button>
+    <button class="btn btn-danger" type="button"
+            onclick="kirana.submitForm('form-ord','reject_order')">
+      {{ icons.x|safe }} Reject
+    </button>
+  </form>
+</div>

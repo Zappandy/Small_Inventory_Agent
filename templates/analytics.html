@@ -1,0 +1,109 @@
+{# Analytics — category mix + top sellers (visual chart style) #}
+
+{# ── Headline metrics ──────────────────────────────────────── #}
+<div class="kpi-grid kpi-grid-3">
+  {% for m in metrics %}
+    <div class="kpi {{ m.color }}">
+      <div class="kpi-head">
+        <div class="kpi-label">{{ m.label }}</div>
+        <div class="kpi-icon">{{ m.icon|safe }}</div>
+      </div>
+      <div class="kpi-value">{{ m.value }}</div>
+      <div class="kpi-foot">{{ m.foot }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="grid grid-2">
+
+  {# ── Inventory value by category ──────────────────────────── #}
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">
+        <span class="card-title-icon">{{ icon_chart|safe }}</span>
+        Inventory value by category
+      </h3>
+      {% if categories.total_value %}
+        <span class="badge badge-neutral">Total ₹{{ categories.total_value_fmt }}</span>
+      {% endif %}
+    </div>
+
+    {% if categories.rows %}
+      <div class="chart-list">
+        {% for c in categories.rows %}
+          <div class="chart-row">
+            <div class="chart-row-head">
+              <div class="chart-row-name">
+                {{ c.name }}
+                <span class="chart-row-count">{{ c.count }} item{{ '' if c.count == 1 else 's' }}</span>
+              </div>
+              <div class="chart-row-meta">
+                <span class="chart-row-val">₹{{ c.value_fmt }}</span>
+                <span class="chart-row-share">{{ c.share }}%</span>
+              </div>
+            </div>
+            <div class="chart-bar">
+              <div class="chart-bar-fill"
+                   role="progressbar"
+                   aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ c.bar_pct }}"
+                   aria-label="{{ c.name }} value share"
+                   style="width:{{ c.bar_pct }}%"></div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">
+        <div class="empty-icon" aria-hidden="true">{{ icon_chart|safe }}</div>
+        <div>No data yet — add products to see your category mix.</div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── Top sellers ──────────────────────────────────────────── #}
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">
+        <span class="card-title-icon">{{ icon_trophy|safe }}</span>
+        Top sellers · last 30 days
+      </h3>
+      {% if sellers.total_revenue %}
+        <span class="badge badge-success">₹{{ sellers.total_revenue_fmt }}</span>
+      {% endif %}
+    </div>
+
+    {% if sellers.rows %}
+      <ol class="seller-list">
+        {% for s in sellers.rows %}
+          <li class="seller-row-v2">
+            <div class="seller-bar-bg" aria-hidden="true" style="width:{{ s.bar_pct }}%"></div>
+            <div class="seller-rank-v2 {% if loop.index <= 3 %}r{{ loop.index }}{% endif %}">
+              {% if loop.index == 1 %}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.39 4.84L19.7 7.6l-3.85 3.74.91 5.3L12 14.1 7.24 16.64l.91-5.3L4.3 7.6l5.31-.76z"/></svg>
+              {% else %}
+                {{ loop.index }}
+              {% endif %}
+            </div>
+            <div class="seller-info">
+              <div class="seller-name">{{ s.name }}</div>
+              <div class="seller-sub">
+                {% if s.name_local %}{{ s.name_local }} · {% endif %}
+                {{ s.sold }} {{ s.unit }} sold
+              </div>
+            </div>
+            <div class="seller-amt">
+              <div class="seller-val">₹{{ s.revenue_fmt }}</div>
+              <div class="seller-share">{{ s.share }}% of top 10</div>
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <div class="empty">
+        <div class="empty-icon" aria-hidden="true">{{ icon_trophy|safe }}</div>
+        <div>No sales recorded in the last 30 days.</div>
+      </div>
+    {% endif %}
+  </div>
+
+</div>

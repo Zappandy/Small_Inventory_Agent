@@ -1,0 +1,77 @@
+{# Base shell — sidebar + top bar + body slot #}
+<div class="k-app" id="kirana-root" data-page="{{ page }}"{% if toast %} data-toast="{{ toast }}"{% endif %}>
+
+  {# ── Sidebar ──────────────────────────────────────────────── #}
+  <aside class="k-sidebar" aria-label="Primary">
+    <div class="k-brand">
+      <div class="k-brand-logo" aria-hidden="true">{{ logo_svg|safe }}</div>
+      <div class="k-brand-text">
+        <h1>Kirana AI</h1>
+        <div class="k-brand-sub">{{ shop_name }}</div>
+      </div>
+      <button class="k-collapse-top" type="button"
+              onclick="kirana.toggleSidebar()"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+    </div>
+
+    <div class="k-nav-section" aria-hidden="true">Workspace</div>
+    <nav class="k-nav" aria-label="Sections">
+      {% for item in nav %}
+        <button class="k-nav-item {% if item.key == page %}active{% endif %}"
+                {% if item.key == page %}aria-current="page"{% endif %}
+                onclick="kirana.navigate('{{ item.key }}')">
+          <span class="k-nav-icon" aria-hidden="true">{{ item.icon|safe }}</span>
+          <span class="k-nav-label">{{ item.label }}</span>
+          {% if item.badge %}
+            <span class="k-nav-badge {{ item.badge_kind or '' }}"
+                  aria-label="{{ item.badge }} pending">{{ item.badge }}</span>
+          {% endif %}
+        </button>
+      {% endfor %}
+    </nav>
+
+    <div class="k-sidebar-footer">
+      <div class="k-vision-row" data-status="{{ 'online' if vision_online else 'offline' }}">
+        <span class="k-status-dot" aria-hidden="true"></span>
+        <span class="k-vision-label">
+          Vision <strong>{{ 'online' if vision_online else 'offline' }}</strong>
+        </span>
+      </div>
+      <div class="k-region">{{ region }} · runs locally</div>
+
+      <button class="k-collapse-btn" type="button"
+              onclick="kirana.toggleSidebar()"
+              aria-label="Collapse sidebar"
+              aria-controls="kirana-root"
+              aria-expanded="true"
+              title="Collapse sidebar">
+        <span class="k-collapse-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </span>
+        <span class="k-collapse-label">Collapse</span>
+      </button>
+    </div>
+
+  </aside>
+
+  {# ── Main ─────────────────────────────────────────────────── #}
+  <main class="k-main">
+    <header class="k-topbar">
+      <div>
+        <h2>{{ title }}</h2>
+        {% if subtitle %}<div class="k-topbar-sub">{{ subtitle }}</div>{% endif %}
+      </div>
+      <div class="k-topbar-actions">
+        {{ topbar_actions|safe }}
+      </div>
+    </header>
+
+    <div class="k-body">
+      {{ body|safe }}
+    </div>
+  </main>
+
+</div>

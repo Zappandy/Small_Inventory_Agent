@@ -55,13 +55,13 @@ def _result_from_modal_payload(payload: dict[str, Any], trace: list[str]) -> Vis
 def _extract_receipt_result_with_modal(image_path: Any) -> VisionExtractionResult:
     trace: list[str] = ["Starting receipt image extraction via Modal"]
 
-    endpoint = os.getenv("MODAL_RECEIPT_ENDPOINT", "").strip()
+    endpoint = (os.getenv("MODAL_RECEIPT_ENDPOINT") or os.getenv("MINICPM_RECEIPT_ENDPOINT") or "").strip()
     if not endpoint:
         return VisionExtractionResult(
             backend_name=BACKEND_NAME,
             model_name=UNKNOWN_MODEL,
             trace_messages=[
-                "MODAL_RECEIPT_ENDPOINT is not set.",
+                "MODAL_RECEIPT_ENDPOINT or MINICPM_RECEIPT_ENDPOINT is not set.",
                 "Model endpoint is not connected yet.",
                 "Use pasted/sample receipt text for the MVP path.",
             ],
