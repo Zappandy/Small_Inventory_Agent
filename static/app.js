@@ -201,6 +201,46 @@
             });
     }
 
+
+    function transcribeAudio() {
+        const input = $("#modal-speech-audio");
+        if (!input || !input.files || !input.files[0]) {
+            toast("Choose an audio file first.", "warn");
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append("audio", input.files[0]);
+        fd.append("state", JSON.stringify(window.kirana._state || {}));
+
+        toast("Transcribing audio…", "info");
+        fetch("/api/speech", { method: "POST", body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (payload) {
+                applyResponse(payload);
+
+                const transcript =
+                    payload &&
+                    payload.state &&
+                    payload.state.voice_result &&
+                    payload.state.voice_result.transcript;
+
+                if (transcript) {
+                    const inputText = $("#voice-text");
+                    const transcriptBox = $("#voice-transcript");
+
+                    if (inputText) inputText.value = transcript;
+                    if (transcriptBox) transcriptBox.textContent = transcript;
+                }
+
+                toast("Speech transcribed", "success");
+            })
+            .catch(function (e) {
+                console.error("[kirana] speech upload failed", e);
+                toast("Speech transcription failed", "danger");
+            });
+    }
+
     /* ══════════════════════════════════════════════════════════
        Number count-up: scans elements with [data-count] and
        tweens from 0 → target. Honors reduced motion.
@@ -596,7 +636,9 @@
             if (e.code !== "Space" || e.repeat) return;
             if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
             e.preventDefault();
-            toggle();
+            if (window.kirana && window.kirana.voice && window.kirana.voice.start) {
+                window.kirana.voice.start();
+            }
         });
 
         return { init: init, start: start, stop: stop, toggle: toggle, submit: submitVoice, fillExample: fillExample, setLang: setLang };
@@ -614,7 +656,7 @@
             else          toast(t, "info");
         }
         decorateDashboard();
-        Voice.init();
+        if (window.kirana && window.kirana.voice && window.kirana.voice.init) window.kirana.voice.init();
     }
 
     function wirePulseChart() {
@@ -741,11 +783,175 @@
         });
     }
 
+
+    function createModalVoice() {
+        let stream = null;
+        let recorder = null;
+        let chunks = [];
+        let isRecording = false;
+
+        function setStatus(msg) {
+            const el = $("#voice-status");
+            if (el) el.textContent = msg;
+        }
+
+        function setTranscript(msg) {
+            const el = $("#voice-transcript");
+            if (el) el.textContent = msg || "";
+        }
+
+        function setListening(on) {
+            const mic = $("#voice-mic") || $(".voice-mic");
+            if (mic) {
+                mic.classList.toggle("is-listening", !!on);
+                mic.setAttribute("aria-pressed", on ? "true" : "false");
+                mic.setAttribute("aria-label", on ? "Stop recording" : "Start recording");
+            }
+            $("#voice-wave")?.classList.toggle("is-live", !!on);
+        }
+
+        async function start() {
+            if (isRecording) {
+                stop();
+                return;
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                toast("Browser microphone recording is not available. Use audio upload.", "warn");
+                setStatus("Mic recording unavailable. Use audio upload.");
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                chunks = [];
+
+                let mimeType = "";
+                if (window.MediaRecorder && MediaRecorder.isTypeSupported("audio/webm")) {
+                    mimeType = "audio/webm";
+                } else if (window.MediaRecorder && MediaRecorder.isTypeSupported("audio/mp4")) {
+                    mimeType = "audio/mp4";
+                }
+
+                recorder = mimeType
+                    ? new MediaRecorder(stream, { mimeType: mimeType })
+                    : new MediaRecorder(stream);
+
+                recorder.ondataavailable = function (event) {
+                    if (event.data && event.data.size > 0) chunks.push(event.data);
+                };
+
+                recorder.onstop = function () {
+                    const type = recorder && recorder.mimeType ? recorder.mimeType : "audio/webm";
+                    const ext = type.includes("mp4") ? "m4a" : "webm";
+                    const blob = new Blob(chunks, { type: type });
+                    cleanup();
+                    sendBlob(blob, "voice-recording." + ext);
+                };
+
+                recorder.start();
+                isRecording = true;
+                setListening(true);
+                setTranscript("");
+                setStatus("Recording… click the mic again to stop.");
+                toast("Recording audio…", "info");
+            } catch (e) {
+                console.error("[voice] mic recording failed", e);
+                cleanup();
+                setListening(false);
+                setStatus("Microphone permission failed. Use audio upload.");
+                toast("Microphone permission failed. Use audio upload.", "danger");
+            }
+        }
+
+        function stop() {
+            if (recorder && isRecording) {
+                setStatus("Sending audio to Modal…");
+                toast("Transcribing audio…", "info");
+                recorder.stop();
+            } else {
+                cleanup();
+            }
+        }
+
+        function cleanup() {
+            isRecording = false;
+            setListening(false);
+            if (stream) {
+                stream.getTracks().forEach(function (track) { track.stop(); });
+            }
+            stream = null;
+            recorder = null;
+        }
+
+        function sendBlob(blob, filename) {
+            if (!blob || blob.size === 0) {
+                toast("No audio recorded.", "warn");
+                setStatus("No audio recorded.");
+                return;
+            }
+
+            const fd = new FormData();
+            fd.append("state", JSON.stringify(window.kirana._state || {}));
+            fd.append("audio", blob, filename || "voice-recording.webm");
+
+            fetch("/api/speech", { method: "POST", body: fd })
+                .then(function (r) {
+                    if (!r.ok) throw new Error("Speech API failed: " + r.status);
+                    return r.json();
+                })
+                .then(function (payload) {
+                    applyResponse(payload);
+
+                    const transcript =
+                        payload &&
+                        payload.state &&
+                        payload.state.voice_result &&
+                        payload.state.voice_result.transcript;
+
+                    const inputText = $("#voice-text");
+                    const transcriptBox = $("#voice-transcript");
+
+                    if (transcript && inputText) inputText.value = transcript;
+                    if (transcript && transcriptBox) transcriptBox.textContent = transcript;
+
+                    setStatus(transcript ? "Transcribed with Modal." : "No transcript returned.");
+                    toast(transcript ? "Speech transcribed" : "No transcript returned", transcript ? "success" : "warn");
+                })
+                .catch(function (e) {
+                    console.error("[voice] Modal transcription failed", e);
+                    setStatus("Speech transcription failed.");
+                    toast("Speech transcription failed", "danger");
+                });
+        }
+
+        function init() {
+            const mic = $("#voice-mic") || $(".voice-mic");
+            if (mic) {
+                mic.removeAttribute("disabled");
+                mic.onclick = function (event) {
+                    event.preventDefault();
+                    start();
+                };
+                mic.title = "Record audio and transcribe with Modal";
+            }
+            setStatus("Press the mic to record with Modal, then press again to stop.");
+        }
+
+        return {
+            init: init,
+            start: start,
+            stop: stop,
+        };
+    }
+
+
     window.kirana = {
         _state: null,
         dispatch: dispatch,
         navigate: navigate,
         submitForm: submitForm,
+        transcribeAudio: transcribeAudio,
         quickAction: quickAction,
         switchTab: switchTab,
         readForm: readForm,
@@ -753,7 +959,7 @@
         openPhoto: openPhoto,
         toggleSidebar: toggleSidebar,
         toggleTheme: toggleTheme,
-        voice: Voice,
+        voice: createModalVoice(),
     };
 
     if (document.readyState === "loading") {

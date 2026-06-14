@@ -349,6 +349,25 @@
       </button>
     </div>
 
+    <div class="voice-or" aria-hidden="true"><span>or upload audio</span></div>
+
+    <div class="voice-form" style="margin-bottom:14px">
+      <label for="modal-speech-audio" class="visually-hidden">Upload correction audio</label>
+      <div class="input-affix-wrap">
+        <span class="input-affix" aria-hidden="true">{{ icons.mic|safe }}</span>
+        <input id="modal-speech-audio"
+               class="input has-prefix"
+               type="file"
+               accept="audio/*"
+               aria-label="Upload audio for Modal transcription">
+      </div>
+      <button type="button"
+              class="btn btn-secondary"
+              onclick="kirana.transcribeAudio()">
+        Transcribe with Modal
+      </button>
+    </div>
+
     <div class="voice-or" aria-hidden="true"><span>or type it</span></div>
 
     <form id="form-voice" class="voice-form"
