@@ -166,22 +166,56 @@ See `docs/plan_dashboard_insights_agent.md`.
 
 ---
 
+---
+
+### 8. Modal cold-start latency (UX gap, not a bug)
+
+Both Modal endpoints have 10–30 s cold start after ~5 min idle:
+- OCR: `POST /api/photo` → `MODAL_RECEIPT_ENDPOINT`
+- ASR: `POST /api/speech` → `MODAL_SPEECH_ENDPOINT`
+
+**Short-term fix (1 hr)**: Add a loading spinner/progress hint to the photo and voice buttons so the wait feels intentional rather than broken. Currently the button disables but there is no server-side progress indication.
+
+**Medium-term fix (2 hrs)**: Add `GET /api/warm` to `app.py` that fire-and-forgets a HEAD request to both Modal endpoints, and call it on page load from JS. This keeps containers warm without user interaction.
+
+```python
+@server.get("/api/warm")
+async def api_warm():
+    import threading, requests, os
+    def _ping(url):
+        try: requests.head(url, timeout=5)
+        except Exception: pass
+    for ep in [os.getenv("MODAL_RECEIPT_ENDPOINT",""), os.getenv("MODAL_SPEECH_ENDPOINT","")]:
+        if ep:
+            threading.Thread(target=_ping, args=(ep,), daemon=True).start()
+    return {"ok": True}
+```
+
+JS in `static/app.js` init: `fetch("/api/warm").catch(() => {});`
+
+**Long-term**: `min_containers=1` on Modal functions keeps a T4 always warm (~$0.50/day per endpoint).
+
+---
+
 ## Priority matrix
 
 | Issue | Effort | Impact | Priority |
 |-------|--------|--------|----------|
+| ReAct agent wired to photo+voice | Medium | Very High | P0 — see plan_react_agent.md |
 | "Add to order" writes to DB | Low | High | P1 |
 | Float quantity (round fix) | Trivial | Medium | P1 |
 | Receipt row product matching | Medium | High | P1 |
+| Modal loading spinner | Low | Medium | P1 |
 | AI insights deterministic prose | Low | Medium | P2 |
 | "Offer to route" → orders table | Low | Medium | P2 |
 | Orders "Mark Received" flow | Medium | High | P2 |
+| `/api/warm` keep-warm endpoint | Low | Medium | P2 |
 | Analytics date range filter | Low | Low | P3 |
 | AI insights LLM prose | High | Medium | P3 |
 
 ## Related plans
 
+- ReAct agent integration (P0): `docs/plan_react_agent.md`
 - Voice command NLU: `docs/plan_voice_command_agent.md`
-- Modal latency: `docs/plan_modal_latency.md`
 - Dashboard LLM insights: `docs/plan_dashboard_insights_agent.md` (TBD)
 - Liquidation agent: `docs/plan_liquidation_agent.md` (TBD)
