@@ -1,28 +1,24 @@
 ---
-
-title: Dukaan Saathi — Small-Model Inventory Copilot
+title: Dukaan Saathi
 emoji: 🛒
-colorFrom: green
-colorTo: yellow
-sdk: gradio
-sdk_version: 6.16.0
-app_file: app.py
+colorFrom: indigo
+colorTo: green
+sdk: docker
+app_port: 7860
 pinned: false
 license: mit
 tags:
-
-* inventory
-* kirana
-* telugu
-* gradio
-* minicpm-v
-* modal
-* speech-to-text
-* sqlite
-* human-in-the-loop
-* small-business
-* receipt-parsing
-
+- inventory
+- kirana
+- telugu
+- fastapi
+- minicpm-v
+- modal
+- speech-to-text
+- sqlite
+- human-in-the-loop
+- small-business
+- receipt-parsing
 ---
 
 # Dukaan Saathi · Small-Model Inventory Copilot for Kirana Stores

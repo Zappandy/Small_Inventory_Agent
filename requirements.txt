@@ -5,6 +5,10 @@
 #   python3 scripts/export_requirements.py
 
 gradio==6.16.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.20
+pydantic>=2.0.0
 pandas>=3.0.3
 pillow>=12.2.0
 requests>=2.34.2
