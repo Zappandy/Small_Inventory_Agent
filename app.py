@@ -383,11 +383,22 @@ async def api_photo(state: str = Form(...), image: UploadFile = File(...)) -> di
         tmp_path = tmp.name
 
     ocr_result = _extract_receipt_result_with_modal(tmp_path)
-    trace = list(ocr_result.trace)
+    trace = list(getattr(ocr_result, "trace", []) or [])
+    if not trace:
+        trace = [
+            f"[receipt_ocr] OCR model: {getattr(ocr_result, 'model', 'unknown')}",
+            f"[receipt_ocr] Raw text length: {len(getattr(ocr_result, 'raw_text', '') or '')}",
+        ]
 
-    if ocr_result.raw_text.strip():
-        rows, parser_trace = _parse_receipt_with_configured_backend(ocr_result.raw_text)
-        trace.extend(parser_trace)
+    if (getattr(ocr_result, 'raw_text', '') or '').strip():
+        try:
+            rows, parser_trace = _parse_receipt_with_configured_backend(getattr(ocr_result, 'raw_text', '') or '')
+            trace.extend(parser_trace)
+        except Exception as exc:
+            trace.append(f"[receipt_parser] Configured backend failed: {exc}")
+            trace.append("[receipt_parser] Falling back to deterministic parser.")
+            rows, parser_trace = parse_receipt_text(getattr(ocr_result, 'raw_text', '') or '')
+            trace.extend(parser_trace)
     else:
         rows = []
 
@@ -395,16 +406,16 @@ async def api_photo(state: str = Form(...), image: UploadFile = File(...)) -> di
         result = {
             "rows": rows,
             "trace": trace,
-            "raw_text": ocr_result.raw_text,
-            "ocr_model": ocr_result.model,
+            "raw_text": getattr(ocr_result, "raw_text", "") or "",
+            "ocr_model": getattr(ocr_result, "model", "unknown"),
         }
         toast = f"info|Receipt parsed · {len(rows)} row(s)"
     else:
         result = {
             "error": trace[-1] if trace else "No rows extracted",
             "trace": trace,
-            "raw_text": ocr_result.raw_text,
-            "ocr_model": ocr_result.model,
+            "raw_text": getattr(ocr_result, "raw_text", "") or "",
+            "ocr_model": getattr(ocr_result, "model", "unknown"),
         }
         toast = f"warn|{result['error']}"
 

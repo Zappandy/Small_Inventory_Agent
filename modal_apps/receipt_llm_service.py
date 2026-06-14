@@ -44,7 +44,7 @@ adapter_volume = modal.Volume.from_name(
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    .apt_install("git")
+    .apt_install("git", "cmake", "curl", "libcurl4-openssl-dev")
     .pip_install(
         "fastapi[standard]",
         "accelerate>=0.34.0",
@@ -55,6 +55,13 @@ image = (
         "transformers>=4.45.0",
         "unsloth>=2024.12",
         "bitsandbytes",
+        # Required by unsloth's GGUF export pipeline (pre-installed so unsloth
+        # doesn't try to run `uv pip install` at runtime inside Modal, which
+        # fails because there is no virtualenv in the container).
+        "gguf",
+        "protobuf",
+        "sentencepiece",
+        "mistral_common",
     )
     .env({"HF_HOME": "/model_cache"})
 )
@@ -441,22 +448,30 @@ def push_adapter_to_hub() -> dict:
 
     # Export Q4_K_M GGUF for CPU inference via llama.cpp.
     # The filename must match what scripts/download_models.py fetches.
+    # Non-fatal: unsloth's GGUF installer runs `uv pip install` at runtime which
+    # fails in Modal's system-Python environment (no venv). fp16 push is the
+    # critical path; GGUF can be exported separately if needed.
     gguf_local = "/tmp/receipt-gguf"
     gguf_filename = "llama-3.2-3b-receipt-unsloth.Q4_K_M.gguf"
+    gguf_pushed = False
     print(f"Exporting GGUF Q4_K_M to {gguf_local}")
-    model.save_pretrained_gguf(gguf_local, tokenizer, quantization_method="q4_k_m")
-    gguf_files = list(Path(gguf_local).glob("*.gguf"))
-    if gguf_files:
-        gguf_src = gguf_files[0]
-        print(f"Uploading {gguf_src.name} → {hf_repo_id}/{gguf_filename}")
-        HfApi(token=hf_token).upload_file(
-            path_or_fileobj=str(gguf_src),
-            path_in_repo=gguf_filename,
-            repo_id=hf_repo_id,
-            repo_type="model",
-        )
-    else:
-        print("Warning: no GGUF file found after export; skipping GGUF upload")
+    try:
+        model.save_pretrained_gguf(gguf_local, tokenizer, quantization_method="q4_k_m")
+        gguf_files = list(Path(gguf_local).glob("*.gguf"))
+        if gguf_files:
+            gguf_src = gguf_files[0]
+            print(f"Uploading {gguf_src.name} → {hf_repo_id}/{gguf_filename}")
+            HfApi(token=hf_token).upload_file(
+                path_or_fileobj=str(gguf_src),
+                path_in_repo=gguf_filename,
+                repo_id=hf_repo_id,
+                repo_type="model",
+            )
+            gguf_pushed = True
+        else:
+            print("Warning: no GGUF file found after export; skipping GGUF upload")
+    except Exception as gguf_err:
+        print(f"Warning: GGUF export skipped — {gguf_err}")
 
     HfApi(token=hf_token).upload_file(
         path_or_fileobj=MODEL_CARD.encode(),
@@ -467,7 +482,7 @@ def push_adapter_to_hub() -> dict:
 
     model_url = f"https://huggingface.co/{hf_repo_id}"
     print(f"Done: {model_url}")
-    return {"ok": True, "hf_repo_id": hf_repo_id, "url": model_url, "gguf": gguf_filename}
+    return {"ok": True, "hf_repo_id": hf_repo_id, "url": model_url, "gguf": gguf_filename if gguf_pushed else None}
 
 
 @app.local_entrypoint()

@@ -117,6 +117,7 @@ def init_db() -> None:
     _dukaan_init_db(seed_demo_data=True)
     _apply_extensions()
     _seed_default_settings()
+    _seed_kirana_demo_products()
     _initialized = True
 
 
@@ -134,6 +135,119 @@ def _seed_default_settings() -> None:
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
                 (k, v),
             )
+
+
+def _seed_kirana_demo_products() -> None:
+    """Idempotently add friendlier demo products for stakeholder demos."""
+    demo_products = [
+        {
+            "name": "Tomato",
+            "name_local": "టమాట",
+            "category": "Fruits & Vegetables",
+            "qty": 18,
+            "unit": "kg",
+            "min_stock": 8,
+            "buy_price": 28,
+            "sell_price": 40,
+            "supplier": "Fresh Mandi Supplier",
+        },
+        {
+            "name": "Onion",
+            "name_local": "ఉల్లిపాయ",
+            "category": "Fruits & Vegetables",
+            "qty": 25,
+            "unit": "kg",
+            "min_stock": 10,
+            "buy_price": 22,
+            "sell_price": 34,
+            "supplier": "Fresh Mandi Supplier",
+        },
+        {
+            "name": "Potato",
+            "name_local": "బంగాళాదుంప",
+            "category": "Fruits & Vegetables",
+            "qty": 20,
+            "unit": "kg",
+            "min_stock": 10,
+            "buy_price": 20,
+            "sell_price": 32,
+            "supplier": "Fresh Mandi Supplier",
+        },
+        {
+            "name": "Banana",
+            "name_local": "అరటి పండు",
+            "category": "Fruits & Vegetables",
+            "qty": 36,
+            "unit": "piece",
+            "min_stock": 18,
+            "buy_price": 4,
+            "sell_price": 7,
+            "supplier": "Fresh Mandi Supplier",
+        },
+        {
+            "name": "Apple",
+            "name_local": "ఆపిల్",
+            "category": "Fruits & Vegetables",
+            "qty": 24,
+            "unit": "piece",
+            "min_stock": 12,
+            "buy_price": 18,
+            "sell_price": 30,
+            "supplier": "Fresh Mandi Supplier",
+        },
+        {
+            "name": "Coriander",
+            "name_local": "కొత్తిమీర",
+            "category": "Fruits & Vegetables",
+            "qty": 15,
+            "unit": "bunch",
+            "min_stock": 8,
+            "buy_price": 5,
+            "sell_price": 10,
+            "supplier": "Fresh Mandi Supplier",
+        },
+        {
+            "name": "Milk 500ml",
+            "name_local": "పాలు 500ml",
+            "category": "Dairy",
+            "qty": 30,
+            "unit": "packet",
+            "min_stock": 12,
+            "buy_price": 24,
+            "sell_price": 28,
+            "supplier": "Daily Dairy Distributor",
+        },
+        {
+            "name": "Eggs",
+            "name_local": "గుడ్లు",
+            "category": "Dairy",
+            "qty": 60,
+            "unit": "piece",
+            "min_stock": 24,
+            "buy_price": 5,
+            "sell_price": 7,
+            "supplier": "Daily Dairy Distributor",
+        },
+    ]
+
+    for item in demo_products:
+        try:
+            if find_by_name(item["name"]):
+                continue
+            add_product(
+                item["name"],
+                item["category"],
+                item["qty"],
+                item["unit"],
+                item["min_stock"],
+                item["buy_price"],
+                item["sell_price"],
+                name_local=item["name_local"],
+                supplier=item["supplier"],
+            )
+        except Exception:
+            # Demo seeding must never prevent app startup.
+            continue
 
 
 def _new_id() -> str:
