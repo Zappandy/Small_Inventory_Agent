@@ -413,211 +413,120 @@ while preserving the same approval gates.
 ## Main files
 
 ```text
-app.py
-dukaan_saathi/ui/gradio_app.py
-dukaan_saathi/parsers/stock_command.py
-dukaan_saathi/parsers/receipt_text.py
-dukaan_saathi/parsers/receipt_correction.py
-dukaan_saathi/services/inventory.py
-dukaan_saathi/services/reorder.py
-dukaan_saathi/agent/agent.py
-dukaan_saathi/agent/tools.py
-dukaan_saathi/integrations/modal_receipt.py
-dukaan_saathi/integrations/llamacpp_llm.py
-dukaan_saathi/integrations/llamacpp_receipt.py
-dukaan_saathi/integrations/speech.py
-dukaan_saathi/integrations/vision.py
-modal_apps/receipt_vlm_service.py
-modal_apps/speech_asr_service.py
-modal_apps/receipt_llm_service.py
-modal_apps/receipt_data_generator.py
-scripts/dev.sh
-scripts/start_llamacpp.sh
-scripts/run_app.sh
-scripts/modal_finetune_receipt.sh
-scripts/modal_generate_receipt_examples.sh
-docs/pipeline_traceability.md
-smoke_tests/smoke_test.py
+app.py                                     — FastAPI/Server entry point
+dukaan_saathi/ui/gradio_app.py             — Gradio UI path
+dukaan_saathi/agent/react_agent.py         — lean ReAct tool router
+dukaan_saathi/agent/tools.py               — parser, integration, service tools
+dukaan_saathi/parsers/stock_command.py     — deterministic stock command parser
+dukaan_saathi/parsers/receipt_text.py      — deterministic receipt text parser
+dukaan_saathi/parsers/receipt_correction.py — row correction command parser
+dukaan_saathi/services/inventory.py        — canonical inventory write boundary
+dukaan_saathi/services/reorder.py          — reorder suggestion generator
+dukaan_saathi/storage.py                   — SQLite access and seed data
+dukaan_saathi/integrations/modal_receipt.py — Modal OCR HTTP client
+dukaan_saathi/integrations/speech.py       — Modal ASR HTTP client
+modal_apps/receipt_vlm_service.py          — MiniCPM-V receipt OCR endpoint
+modal_apps/speech_asr_service.py           — Distil-Whisper ASR endpoint
+modal_apps/receipt_llm_service.py          — receipt LLM train/serve/push
+modal_apps/receipt_data_generator.py       — synthetic receipt example generator
+scripts/dev.sh                             — local run entrypoint
+scripts/run_app.sh                         — app launcher (called by dev.sh)
+smoke_tests/test_custom_app_safety.py      — approval gate and integration tests
 smoke_tests/test_receipt_parser_regression.py
 smoke_tests/test_receipt_correction.py
 ```
 
 ## Run locally
 
-Install or sync dependencies:
+### Prerequisites
+
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+
+### 1 — Install dependencies
 
 ```bash
 uv sync
 ```
 
-Install receipt fine-tuning dependencies only when training:
+### 2 — Configure environment
 
 ```bash
-uv pip install -r requirements-train.txt
+cp .env.example .env
 ```
 
-Run the required smoke test:
+Then edit `.env`. The minimum required value depends on which backend you run:
 
-```bash
-uv run scripts/smoke_test.sh
-```
+| Backend | Required in `.env` |
+|---------|-------------------|
+| `hf_inference` (recommended) | `HF_RECEIPT_MODEL_REPO=summerdevlin46/dukaan-saathi-receipt-lora` |
+| `modal_llm` | `MODAL_RECEIPT_LLM_ENDPOINT=<url from modal_deploy.sh>` |
+| `deterministic` | nothing — no model calls |
+| `llamacpp` | nothing extra — models downloaded automatically |
 
-Run focused parser tests:
-
-```bash
-uv run python -m pytest smoke_tests/test_receipt_parser_regression.py -q
-uv run python -m pytest smoke_tests/test_receipt_correction.py -q
-```
-
-### Recommended public HF Space path
-
-The public Space is:
+Optional Modal services (add when you have them; app runs without them):
 
 ```text
-https://huggingface.co/spaces/Zappandy/Kirana_AI
+MODAL_RECEIPT_ENDPOINT=...   # receipt image OCR (MiniCPM-V)
+MODAL_SPEECH_ENDPOINT=...    # speech transcription (Distil-Whisper)
 ```
 
-The root `Dockerfile` is the deployment artifact for that Space. It runs
-`uvicorn app:server` and should not require local llama.cpp model servers.
+`HF_TOKEN` is only needed if `HF_RECEIPT_MODEL_REPO` is a private repo.
 
-This path uses the fine-tuned model on Hugging Face via the HF Inference API.
+### 3 — Run
+
+Pick one backend and start the app. It opens at **http://127.0.0.1:7860**.
+
+**HF Inference (recommended for full demo)**
+
+Calls the fine-tuned receipt model hosted on Hugging Face Hub. Requires
+`HF_RECEIPT_MODEL_REPO` in `.env`.
 
 ```bash
 scripts/dev.sh --hf-inference
 ```
 
-Or directly:
+**Deterministic (fastest, no model needed)**
 
-```bash
-scripts/run_app.sh --backend hf_inference
-```
-
-Set:
-
-```text
-HF_RECEIPT_MODEL_REPO=summerdevlin46/dukaan-saathi-receipt-lora
-RECEIPT_BACKEND=hf_inference
-```
-
-`HF_TOKEN` is only needed if the model repo is private.
-
-Optional Modal services for the public Space:
-
-```text
-MODAL_RECEIPT_ENDPOINT=...       # receipt image OCR
-MODAL_SPEECH_ENDPOINT=...        # speech transcription
-MODAL_RECEIPT_LLM_ENDPOINT=...   # optional receipt parser fallback
-```
-
-The default backend is:
-
-```text
-RECEIPT_BACKEND=hf_inference
-```
-
-SQLite persistence is a product choice:
-
-- Without HF persistent storage, omit `DB_PATH`; the Space uses
-  `data/dukaan.db` inside the runtime and state may reset on rebuild/restart.
-- With HF persistent storage enabled, set:
-
-```text
-DB_PATH=/data/dukaan.db
-```
-
-The Docker image creates `/data`, but durable data still requires persistent
-storage to be enabled in the Space settings.
-
-### Modal-hosted receipt parser path
-
-This is the probabilistic path. It uses the fine-tuned LoRA adapter deployed on
-Modal (see [Prepared demo artifacts](#prepared-demo-artifacts)). Requires the
-`.env` file with `MODAL_RECEIPT_LLM_ENDPOINT` set.
-
-```bash
-scripts/dev.sh --modal-llm
-```
-
-Or directly:
-
-```bash
-scripts/run_app.sh --backend modal_llm
-```
-
-Open the local Gradio URL shown in the terminal, usually:
-
-```text
-http://127.0.0.1:7860
-```
-
-### Local llama.cpp path (fallback)
-
-Use this if the Modal endpoint is unavailable or you want a fully local run.
-Requires a GGUF-compatible model artifact and starts two llama.cpp servers. The
-HF Space model pushed by `receipt_llm_service.py::push` is a merged HF Hub model
-for HF Inference API, not automatically a GGUF.
-
-```bash
-scripts/dev.sh --llamacpp
-```
-
-Or in separate terminals:
-
-```bash
-scripts/start_llamacpp.sh        # starts ports 8080 and 8082
-scripts/run_app.sh --backend llamacpp
-```
-
-Expected local model servers:
-
-```text
-http://127.0.0.1:8080/v1  # agent orchestrator
-http://127.0.0.1:8082/v1  # receipt parser (fine-tuned)
-```
-
-If `HF_RECEIPT_GGUF_REPO` points to a repo with the expected GGUF file,
-`scripts/download_models.py` can use it for local llama.cpp. If it is unset or
-does not contain a GGUF, the local path falls back to the base model and receipt
-parsing quality will be lower than the fine-tuned HF Inference path.
-
-Limitations:
-
-* The training set is small (28 examples total), so the adapter improves format
-  following on known receipt styles rather than generalizing broadly.
-* Modal cold starts can add a few seconds to the first receipt parse.
-* Keep owner approval enabled; model output still only populates editable rows.
-
-### Deterministic fallback path
-
-Use this only for fast UI/core workflow testing without model servers.
-Deterministic means the app uses the rule-based Python parsers in
-`dukaan_saathi/parsers/` instead of calling llama.cpp for receipt text parsing.
-Stock commands, pasted/sample receipt text, correction commands, approval, and
-reorder drafts all work. This is not the preferred hackathon demo path.
+Uses rule-based parsers only. Stock commands, receipt text, corrections, and
+approval all work. Use this to verify UI and approval flows without any model
+calls.
 
 ```bash
 scripts/dev.sh --deterministic
 ```
 
-Or:
+**Modal LLM (fine-tuned model served on Modal)**
+
+Calls the LoRA-fine-tuned endpoint you deployed on Modal. Requires
+`MODAL_RECEIPT_LLM_ENDPOINT` in `.env`.
 
 ```bash
-scripts/run_app.sh --backend deterministic
+scripts/dev.sh --modal-llm
 ```
 
-Open the local Gradio URL shown in the terminal, usually:
+**Local llama.cpp (fully offline fallback)**
 
-```text
-http://127.0.0.1:7860
-```
-
-The startup hook used by hosted environments is:
+Downloads GGUF models and starts two llama.cpp servers on ports 8080 and 8082,
+then starts the app. Slow first start; receipt quality depends on whether a
+fine-tuned GGUF is available via `HF_RECEIPT_GGUF_REPO`.
 
 ```bash
-./startup.sh
+scripts/dev.sh --llamacpp
 ```
 
-It also uses `uv run` and repo-local `models/`.
+### 4 — Run tests
+
+```bash
+uv run scripts/smoke_test.sh
+```
+
+Focused test runs:
+
+```bash
+uv run python -m pytest smoke_tests/test_custom_app_safety.py -v
+uv run python -m pytest smoke_tests/test_receipt_parser_regression.py smoke_tests/test_receipt_correction.py -q
+```
 
 ## Modal endpoints
 
@@ -656,11 +565,11 @@ SPEECH_HEALTH_URL="${MODAL_SPEECH_ENDPOINT/speech-transcribe/speech-health}"
 curl "$SPEECH_HEALTH_URL"
 ```
 
-Test receipt extraction directly:
+Test receipt extraction directly (replace with your own receipt image):
 
 ```bash
 curl -sS -X POST "$MODAL_RECEIPT_ENDPOINT" \
-  -F "image=@samples/receipts/receipt.jpeg"
+  -F "image=@/path/to/receipt.jpeg"
 ```
 
 Test speech transcription directly:
