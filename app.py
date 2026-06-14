@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 import kirana_db as db
 import ui as ui_render
-from agent.graph import run_analysis, run_command_parse
+from frontend_backend import run_analysis, run_command_parse
 from dukaan_saathi import config
 from dukaan_saathi.integrations.modal_receipt import _extract_receipt_result_with_modal
 from dukaan_saathi.integrations.speech import transcribe_audio

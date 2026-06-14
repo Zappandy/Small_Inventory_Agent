@@ -598,7 +598,7 @@ def _get_insights(force: bool = False) -> tuple[dict, datetime.datetime | None, 
     if fresh and not force:
         return cache["data"], cache["ts"], None
     try:
-        from agent.graph import run_analysis  # local import: avoid circular at module load
+        from frontend_backend import run_analysis  # local import: avoid circular at module load
         agent_state = run_analysis()
         data = _build_structured_insights(agent_state)
         cache["ts"] = now
