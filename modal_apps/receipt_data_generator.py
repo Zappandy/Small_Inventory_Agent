@@ -28,12 +28,12 @@ image = (
 )
 
 
-SYSTEM_PROMPT = """You generate high-quality synthetic OCR receipt training examples for an Indian kirana inventory parser.
+SYSTEM_PROMPT = """You generate high-quality synthetic OCR receipt training examples for an Indian kirana (corner store) inventory parser.
 
-Return ONLY a JSON array. No markdown. No prose.
+Return ONLY a JSON array. No markdown. No prose. Arithmetic must be correct: every item total = qty * unit_cost, subtotal = sum of totals, net_total = subtotal - discount + gst.
 
 Each array item must have:
-- "input": noisy receipt text as one string
+- "input": noisy receipt text as one string (use \\n for newlines)
 - "output": a JSON object
 
 The output object must have this shape:
@@ -56,7 +56,18 @@ The output object must have this shape:
   "net_total": number
 }
 
-Generate diverse but realistic receipt styles: handwritten supplier bills, printed tax invoices, tally notes, messy OCR spellings, mixed separators, partial headers, and Indian snack/bakery products. Preserve arithmetic consistency.
+Receipt format variety (use ALL of these across examples):
+1. Handwritten supplier bill: "SUPPLIER\\nNo. 1234  Date: 5/6/26\\nProduct  QTY X RATE = TOTAL\\nSubtotal NNN\\nDiscount NNN\\nTotal NNN"
+2. Printed GST invoice: "SUPPLIER\\nGSTIN: 36XXXXX\\nBill Date: DD/MM/YYYY\\n1 PRODUCT  QTY: N/0  RATE: N.NN  NET: N.NN\\nGROSS SALES: NNN\\nSCHEMES: NNN\\nCGST: NNN  SGST: NNN\\nNET AMOUNT: NNN"
+3. Handwritten tally note (messy, abbreviated): "Supplier - DD/MM\\nabbrev  QTYxRATE  TOTAL\\nTotal NNN"
+4. Tabular format: "SUPPLIER\\nInvoice: INV-001\\n1  Product  QTY N  RATE N  AMT N\\nGross: NNN  Disc: NNN  Net: NNN"
+5. Retail purchase note: "SUPPLIER\\nBill: NNN\\nProduct  N pkt  @RATE  TOTAL\\nSub Total: NNN  Disc @ N%: NNN  Net: NNN"
+
+Indian product names to use: Parle-G, Bingo(C), Bingo Mad Angles, Lays Classic, Happy Happy 27.5G, Kurkure, OBM, Bourbon Biscuit, Monaco Salted, Krack Jack, Hide & Seek Choco, Sunfeast Dark Fantasy, Haldiram Bhujia, Lijjat Papad, pav, brd (bread), milk bread, cake slice, Parle Monaco.
+
+For qty_cases/qty_units: handwritten bills use qty_cases=qty_units=N (same). Printed invoices use qty_cases=N, qty_units=N*pack_size (e.g. 5 cases of 24 = 120 units). Tally notes use qty_cases=0, qty_units=N.
+
+Keep discount=0 for tally notes. Use discount 5-15% for handwritten bills and tabular/retail formats. Use gst=5% of subtotal only for printed GST invoices (others gst=0).
 """
 
 
@@ -146,13 +157,14 @@ Seed examples:
     image=image,
     gpu="T4",
     timeout=30 * 60,
+    secrets=[modal.Secret.from_dotenv()],
     volumes={"/model_cache": model_cache},
 )
 def generate_receipt_examples_with_model(
     seed_examples_jsonl: str,
     count: int = 48,
     model_id: str = DEFAULT_MODEL_ID,
-    batch_size: int = 8,
+    batch_size: int = 4,
 ) -> dict[str, Any]:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -188,7 +200,7 @@ def generate_receipt_examples_with_model(
         with torch.no_grad():
             output_ids = model.generate(
                 **inputs,
-                max_new_tokens=3200,
+                max_new_tokens=5120,
                 do_sample=True,
                 temperature=0.8,
                 top_p=0.92,
@@ -200,12 +212,15 @@ def generate_receipt_examples_with_model(
 
         try:
             raw_examples = _extract_json_array(text)
+            before = len(generated)
             for raw_example in raw_examples:
                 try:
                     generated.append(_validate_training_example(raw_example))
                 except Exception as exc:
-                    print(f"Skipping invalid generated example: {exc}")
+                    print(f"Skipping invalid example: {exc}")
             generated = _dedupe_examples(generated)
+            added = len(generated) - before
+            print(f"Attempt {attempts}: +{added} valid examples → {len(generated)}/{count} total")
         except Exception as exc:
             print(f"Generation attempt {attempts} failed: {exc}")
 

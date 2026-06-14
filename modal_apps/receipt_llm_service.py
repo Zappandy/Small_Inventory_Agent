@@ -101,7 +101,7 @@ def finetune_receipt_lora(
     learning_rate: float = 2e-4,
 ) -> dict:
     import torch
-    from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArguments
+    from transformers import Trainer, TrainingArguments
     from unsloth import FastLanguageModel
 
     print(f"Loading base model: {BASE_MODEL}")
@@ -124,7 +124,7 @@ def finetune_receipt_lora(
             "up_proj",
             "down_proj",
         ],
-        lora_alpha=16,
+        lora_alpha=32,
         lora_dropout=0.05,
         bias="none",
         use_gradient_checkpointing=True,
@@ -141,13 +141,35 @@ def finetune_receipt_lora(
         tokenizer.pad_token = tokenizer.eos_token
     model.config.use_cache = False
 
+    # Split each example at "### Response:\n" and mask the prefix tokens so
+    # loss is computed only on the JSON output, not on the instruction/input.
+    response_marker = "### Response:\n"
+
     def tokenize(batch):
-        return tokenizer(
-            batch["text"],
-            max_length=2048,
-            truncation=True,
-            padding=False,
-        )
+        all_input_ids, all_labels, all_attention_mask = [], [], []
+        for text in batch["text"]:
+            split = text.find(response_marker)
+            full = tokenizer(text, max_length=2048, truncation=True, padding=False)
+            input_ids = full["input_ids"]
+            if split != -1:
+                prefix_ids = tokenizer(
+                    text[: split + len(response_marker)],
+                    max_length=2048,
+                    truncation=True,
+                    padding=False,
+                )["input_ids"]
+                mask_len = min(len(prefix_ids), len(input_ids))
+            else:
+                mask_len = len(input_ids)
+            labels = [-100] * mask_len + list(input_ids[mask_len:])
+            all_input_ids.append(input_ids)
+            all_labels.append(labels)
+            all_attention_mask.append(full["attention_mask"])
+        return {
+            "input_ids": all_input_ids,
+            "labels": all_labels,
+            "attention_mask": all_attention_mask,
+        }
 
     tokenized_dataset = dataset.map(
         tokenize,
@@ -155,10 +177,26 @@ def finetune_receipt_lora(
         remove_columns=dataset.column_names,
     )
 
+    class _ResponseOnlyCollator:
+        def __init__(self, pad_id: int):
+            self._pad = pad_id
+
+        def __call__(self, features):
+            max_len = max(len(f["input_ids"]) for f in features)
+            batch = {"input_ids": [], "attention_mask": [], "labels": []}
+            for f in features:
+                pad = max_len - len(f["input_ids"])
+                batch["input_ids"].append(list(f["input_ids"]) + [self._pad] * pad)
+                batch["attention_mask"].append(list(f["attention_mask"]) + [0] * pad)
+                batch["labels"].append(list(f["labels"]) + [-100] * pad)
+            return {k: torch.tensor(v) for k, v in batch.items()}
+
+    data_collator = _ResponseOnlyCollator(pad_id=tokenizer.pad_token_id)
+
     trainer = Trainer(
         model=model,
         train_dataset=tokenized_dataset,
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        data_collator=data_collator,
         args=TrainingArguments(
             per_device_train_batch_size=2,
             gradient_accumulation_steps=4,
@@ -170,7 +208,7 @@ def finetune_receipt_lora(
             logging_steps=1,
             output_dir=str(ADAPTER_DIR / "checkpoints"),
             save_strategy="no",
-            warmup_steps=2,
+            warmup_ratio=0.05,
             optim="adamw_8bit",
             report_to="none",
         ),
@@ -355,7 +393,7 @@ result = client.text_generation(prompt, model="summerdevlin46/dukaan-saathi-rece
 @app.function(
     image=image,
     gpu="T4",
-    timeout=60 * 30,
+    timeout=60 * 45,
     secrets=[modal.Secret.from_dotenv()],
     volumes={
         "/model_cache": model_cache,
@@ -392,7 +430,7 @@ def push_adapter_to_hub() -> dict:
         load_in_4bit=False,
     )
 
-    print(f"Pushing merged model to Hub: {hf_repo_id}")
+    print(f"Pushing merged fp16 model to Hub: {hf_repo_id}")
     create_repo(hf_repo_id, repo_type="model", exist_ok=True, token=hf_token)
     model.push_to_hub_merged(
         hf_repo_id,
@@ -400,6 +438,25 @@ def push_adapter_to_hub() -> dict:
         save_method="merged_16bit",
         token=hf_token,
     )
+
+    # Export Q4_K_M GGUF for CPU inference via llama.cpp.
+    # The filename must match what scripts/download_models.py fetches.
+    gguf_local = "/tmp/receipt-gguf"
+    gguf_filename = "llama-3.2-3b-receipt-unsloth.Q4_K_M.gguf"
+    print(f"Exporting GGUF Q4_K_M to {gguf_local}")
+    model.save_pretrained_gguf(gguf_local, tokenizer, quantization_method="q4_k_m")
+    gguf_files = list(Path(gguf_local).glob("*.gguf"))
+    if gguf_files:
+        gguf_src = gguf_files[0]
+        print(f"Uploading {gguf_src.name} → {hf_repo_id}/{gguf_filename}")
+        HfApi(token=hf_token).upload_file(
+            path_or_fileobj=str(gguf_src),
+            path_in_repo=gguf_filename,
+            repo_id=hf_repo_id,
+            repo_type="model",
+        )
+    else:
+        print("Warning: no GGUF file found after export; skipping GGUF upload")
 
     HfApi(token=hf_token).upload_file(
         path_or_fileobj=MODEL_CARD.encode(),
@@ -410,14 +467,14 @@ def push_adapter_to_hub() -> dict:
 
     model_url = f"https://huggingface.co/{hf_repo_id}"
     print(f"Done: {model_url}")
-    return {"ok": True, "hf_repo_id": hf_repo_id, "url": model_url}
+    return {"ok": True, "hf_repo_id": hf_repo_id, "url": model_url, "gguf": gguf_filename}
 
 
 @app.local_entrypoint()
 def train(
     dataset_path: str = "data/finetune/receipt_examples.jsonl",
-    max_steps: int = 30,
-    num_train_epochs: int = 8,
+    max_steps: int = 200,
+    num_train_epochs: int = 30,
 ):
     examples_jsonl = Path(dataset_path).read_text()
     result = finetune_receipt_lora.remote(
